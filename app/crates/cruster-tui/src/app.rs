@@ -131,7 +131,21 @@ impl App {
                 self.open_logs_for_selection();
                 LoopState::Continue
             }
+            KeyCode::Char('s') => {
+                self.exec_into_selection();
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
+        }
+    }
+
+    fn exec_into_selection(&mut self) {
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        if let Err(e) = crate::actions::exec::exec_into(&key) {
+            self.toast = Some(format!("exec failed: {e}"));
         }
     }
 
