@@ -5,10 +5,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Service;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::view::ResourceView;
@@ -153,7 +153,13 @@ mod tests {
     use k8s_openapi::api::core::v1::{ServicePort, ServiceSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
-    fn make_svc(ns: &str, name: &str, type_: &str, cluster_ip: &str, ports: Vec<(i32, &str)>) -> Service {
+    fn make_svc(
+        ns: &str,
+        name: &str,
+        type_: &str,
+        cluster_ip: &str,
+        ports: Vec<(i32, &str)>,
+    ) -> Service {
         Service {
             metadata: ObjectMeta {
                 name: Some(name.into()),
@@ -181,7 +187,13 @@ mod tests {
 
     #[test]
     fn svc_ports_joins_multiple_ports_with_comma() {
-        let s = make_svc("default", "web", "ClusterIP", "10.0.0.1", vec![(80, "TCP"), (443, "TCP")]);
+        let s = make_svc(
+            "default",
+            "web",
+            "ClusterIP",
+            "10.0.0.1",
+            vec![(80, "TCP"), (443, "TCP")],
+        );
         assert_eq!(svc_ports(&s), "80/TCP,443/TCP");
     }
 

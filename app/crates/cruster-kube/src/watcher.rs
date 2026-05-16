@@ -110,7 +110,9 @@ mod tests {
         apply_event::<Pods>(&store, Event::Apply(pod.clone()))
             .await
             .unwrap();
-        apply_event::<Pods>(&store, Event::Delete(pod)).await.unwrap();
+        apply_event::<Pods>(&store, Event::Delete(pod))
+            .await
+            .unwrap();
         assert!(store.is_empty().await);
     }
 
@@ -139,7 +141,9 @@ mod tests {
             },
             ..Default::default()
         };
-        apply_event::<Pods>(&store, Event::Apply(pod)).await.unwrap();
+        apply_event::<Pods>(&store, Event::Apply(pod))
+            .await
+            .unwrap();
         assert!(store.is_empty().await);
     }
 }

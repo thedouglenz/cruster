@@ -6,22 +6,21 @@ use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use cruster_kube::StoreRegistry;
 use kube::Client;
-use ratatui::Frame;
-use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
+use ratatui::Terminal;
 
 use crate::actions::describe::DescribePane;
 use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
-use cruster_core::ResourceKey;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
 use crate::views::deployments::DeploymentsView;
@@ -31,6 +30,7 @@ use crate::views::nodes::NodesView;
 use crate::views::pods::PodsView;
 use crate::views::secrets::SecretsView;
 use crate::views::services::ServicesView;
+use cruster_core::ResourceKey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopState {
@@ -174,7 +174,8 @@ impl App {
         };
         if key.kind == "Secret" {
             self.toast = Some(
-                "editing Secrets via cruster is disabled in v1 — use kubectl edit secret ...".into(),
+                "editing Secrets via cruster is disabled in v1 — use kubectl edit secret ..."
+                    .into(),
             );
             return;
         }
@@ -255,7 +256,10 @@ impl App {
             return;
         };
         if key.kind != "Pod" {
-            self.toast = Some(format!("logs are only available for pods (selected: {})", key.kind));
+            self.toast = Some(format!(
+                "logs are only available for pods (selected: {})",
+                key.kind
+            ));
             return;
         }
         let Some(client) = self.client.clone() else {

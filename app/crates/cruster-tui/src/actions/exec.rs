@@ -10,7 +10,7 @@ use std::process::Command;
 
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use cruster_core::ResourceKey;
 
@@ -68,6 +68,9 @@ mod tests {
         let key = ResourceKey::namespaced("Deployment", "default", "web");
         let r = exec_into(&key);
         assert!(r.is_err());
-        assert!(r.unwrap_err().to_string().contains("only supported for pods"));
+        assert!(r
+            .unwrap_err()
+            .to_string()
+            .contains("only supported for pods"));
     }
 }

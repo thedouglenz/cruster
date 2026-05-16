@@ -8,9 +8,7 @@ use std::fmt::Debug;
 
 use cruster_core::ResourceKey;
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{
-    ConfigMap, Event, Namespace, Node, Pod, Secret, Service,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::Resource;
 use serde::de::DeserializeOwned;
 

@@ -11,7 +11,7 @@ use std::process::Command;
 
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 
 /// Open `yaml` in $EDITOR for editing. On save (editor exits 0),

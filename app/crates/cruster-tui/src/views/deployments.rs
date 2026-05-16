@@ -5,10 +5,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::apps::v1::Deployment;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::view::ResourceView;
@@ -41,8 +41,14 @@ impl ResourceView for DeploymentsView {
     fn render(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
 
-        let header = Row::new(vec!["NAMESPACE", "NAME", "READY", "UP-TO-DATE", "AVAILABLE"])
-            .style(Style::default().add_modifier(Modifier::BOLD));
+        let header = Row::new(vec![
+            "NAMESPACE",
+            "NAME",
+            "READY",
+            "UP-TO-DATE",
+            "AVAILABLE",
+        ])
+        .style(Style::default().add_modifier(Modifier::BOLD));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -122,7 +128,11 @@ impl ResourceView for DeploymentsView {
 
 fn ready_desired(dep: &Deployment) -> (i32, i32) {
     let desired = dep.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
-    let ready = dep.status.as_ref().and_then(|s| s.ready_replicas).unwrap_or(0);
+    let ready = dep
+        .status
+        .as_ref()
+        .and_then(|s| s.ready_replicas)
+        .unwrap_or(0);
     (ready, desired)
 }
 

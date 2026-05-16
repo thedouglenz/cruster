@@ -2,9 +2,9 @@
 //! resource. (Phase 2B replaces with a structured describe.)
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::Frame;
 
 #[derive(Debug, Default)]
 pub struct DescribePane {

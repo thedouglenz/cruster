@@ -10,10 +10,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Secret;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::view::ResourceView;
@@ -148,10 +148,10 @@ fn secret_data_count(s: &Secret) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::ByteString;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-    use ratatui::Terminal;
+    use k8s_openapi::ByteString;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
     use std::collections::BTreeMap;
 
     fn make_secret_with_data(name: &str, data: Vec<(&str, &str)>) -> Secret {

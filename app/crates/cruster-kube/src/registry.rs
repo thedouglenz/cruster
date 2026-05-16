@@ -5,9 +5,7 @@
 //! watcher per kind.
 
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{
-    ConfigMap, Event, Namespace, Node, Pod, Secret, Service,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 
 use crate::store::ResourceStore;
 

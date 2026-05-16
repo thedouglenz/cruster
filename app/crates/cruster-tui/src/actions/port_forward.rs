@@ -106,7 +106,10 @@ mod tests {
         let key = ResourceKey::namespaced("Deployment", "default", "web");
         let r = PortForward::start(key, "8080:80".into());
         assert!(r.is_err());
-        assert!(r.unwrap_err().to_string().contains("only supported for pods"));
+        assert!(r
+            .unwrap_err()
+            .to_string()
+            .contains("only supported for pods"));
     }
 
     #[test]

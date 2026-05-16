@@ -1,7 +1,7 @@
 use anyhow::Context;
 use cruster_kube::{
-    ConfigMaps, Deployments, Events, Namespaces, Nodes, Pods, ResourceKind, ResourceStore, Secrets,
-    Services, StoreRegistry, run_watcher,
+    run_watcher, ConfigMaps, Deployments, Events, Namespaces, Nodes, Pods, ResourceKind,
+    ResourceStore, Secrets, Services, StoreRegistry,
 };
 use cruster_tui::App;
 use kube::Client;

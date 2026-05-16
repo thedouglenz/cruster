@@ -6,10 +6,10 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Event;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::view::ResourceView;
@@ -130,7 +130,9 @@ impl ResourceView for EventsView {
 }
 
 fn event_time(e: &Event) -> Option<Time> {
-    e.last_timestamp.clone().or_else(|| e.event_time.clone().map(|mt| Time(mt.0)))
+    e.last_timestamp
+        .clone()
+        .or_else(|| e.event_time.clone().map(|mt| Time(mt.0)))
 }
 
 fn event_age_str(e: &Event) -> String {

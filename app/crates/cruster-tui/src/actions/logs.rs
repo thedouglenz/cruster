@@ -13,9 +13,9 @@ use futures::{AsyncBufReadExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::LogParams;
 use kube::{Api, Client};
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::Frame;
 use tokio::task::JoinHandle;
 
 /// Maximum lines kept in memory per stream. Older lines are dropped.
@@ -85,10 +85,7 @@ impl LogsPane {
                             }
                             Ok(None) => break,
                             Err(e) => {
-                                lines
-                                    .lock()
-                                    .unwrap()
-                                    .push(format!("[stream error: {e}]"));
+                                lines.lock().unwrap().push(format!("[stream error: {e}]"));
                                 break;
                             }
                         }

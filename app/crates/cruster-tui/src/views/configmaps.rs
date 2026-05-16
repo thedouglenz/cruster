@@ -9,10 +9,10 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::ConfigMap;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::view::ResourceView;
@@ -149,10 +149,7 @@ mod tests {
         data.insert("a".into(), "x".into());
         data.insert("b".into(), "y".into());
         let mut binary_data = BTreeMap::new();
-        binary_data.insert(
-            "c".into(),
-            k8s_openapi::ByteString(vec![1, 2, 3]),
-        );
+        binary_data.insert("c".into(), k8s_openapi::ByteString(vec![1, 2, 3]));
         let cm = ConfigMap {
             data: Some(data),
             binary_data: Some(binary_data),
