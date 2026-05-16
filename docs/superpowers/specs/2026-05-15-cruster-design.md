@@ -190,10 +190,14 @@ Code, Sublime, Helix, neovim.
 - **One-step install.** `cruster theme install <url>` (git repo, gist,
   HTTPS URL) and `cruster theme install <name>` (community registry,
   post-v1). Themes ship as a single file in `~/.config/cruster/themes/`.
-- **Ships beautiful defaults.** `dark`, `light`, `solarized-dark`,
-  `solarized-light`, `monokai`, `gruvbox`, `tokyonight`, `catppuccin`,
-  and a `terminal` theme that inherits the host palette. The defaults
-  exist partly so they're good starting points for authors to fork.
+- **Ships beautiful defaults.** Free tier ships the `terminal`
+  theme as the default — it inherits the host terminal's palette
+  so cruster looks coherent in any setup out of the box, but
+  there's no choice. The bundled library (`dark`, `light`,
+  `solarized-dark`, `solarized-light`, `monokai`, `gruvbox`,
+  `tokyonight`, `catppuccin`) and the ability to switch / install
+  custom or community themes is a **Pro feature**. The bundled
+  defaults also exist as good starting points for authors to fork.
 - **Theme-aware safety badge.** Environment badges (`prod` /
   `staging` / `dev` / `local`) draw from a theme's
   `env_band.<environment>` color, so themes look coherent with the
@@ -423,8 +427,8 @@ Pricing (initial):
 
 | Tier | Price | Includes |
 |---|---|---|
-| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, all themes, safety badges, saved workflows), LLM-efficient CLI, all agentskills.io skills, Claude Code plugin |
-| Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, advanced exports |
+| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, safety badges, saved workflows), default `terminal` theme only, LLM-efficient CLI, all agentskills.io skills, Claude Code plugin |
+| Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, theme switching + bundled theme library + community theme installation + live theme reload, advanced exports |
 | Team | $29/mo/user (annual $290/yr) | Pro + shared team config (workflows, themes, safety matchers, saved queries sync via a small hosted service), SSO, audit log of cluster mutations |
 | Enterprise | Contact | Team + self-hosted license server + config sync, BYO CA, air-gapped mode (no outbound calls except apiserver), SLA |
 
@@ -530,9 +534,11 @@ To ship v1 publicly, all of these must hold:
 - The Claude Code plugin flow (highlight pod in TUI →
   `/cruster:debug` in Claude Code) produces a useful answer in
   under 5 seconds end-to-end.
-- A user can install a community theme from a URL in one command,
-  reload it live, and have it work end-to-end including the safety
-  badge.
+- A Pro-licensed user can install a community theme from a URL in
+  one command, reload it live, and have it work end-to-end
+  including the safety badge. A free-tier user attempting the same
+  command gets a clear "this is a Pro feature" message and a link
+  to upgrade — they never see a broken state.
 - License gating works as specified: free tier gets all of Phases
   1–4; Pro features (multi-cluster when shipped, GitOps, AI
   workflows, team) refuse to start without a valid license and say
