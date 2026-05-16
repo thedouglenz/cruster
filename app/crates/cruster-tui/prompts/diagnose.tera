@@ -1,0 +1,26 @@
+I'm investigating a Kubernetes issue. Here's the context from my cluster:
+
+Cluster: {{ cluster.name }} (environment: {{ cluster.environment }})
+{%- if resource %}
+Resource: {{ resource.key.kind }}/{{ resource.key.namespace | default(value="-") }}/{{ resource.key.name }}
+Status: {{ resource.status_summary }}
+Age: {{ resource.age }}
+{%- endif %}
+{%- if events %}
+
+Recent events:
+{%- for e in events %}
+- [{{ e.time }}] {{ e.type }} {{ e.reason }}: {{ e.message }}
+{%- endfor %}
+{%- endif %}
+{%- if logs %}
+
+Recent log lines:
+```
+{%- for line in logs %}
+{{ line }}
+{%- endfor %}
+```
+{%- endif %}
+
+Please diagnose what's wrong and suggest next steps.

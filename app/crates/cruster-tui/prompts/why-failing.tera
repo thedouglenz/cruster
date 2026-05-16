@@ -1,0 +1,31 @@
+Why is this pod failing?
+
+Cluster: {{ cluster.name }}
+{%- if resource %}
+Pod: {{ resource.key.namespace | default(value="-") }}/{{ resource.key.name }}
+Status: {{ resource.status_summary }}
+Age: {{ resource.age }}
+
+Manifest (abridged):
+```yaml
+{{ resource.raw_yaml }}
+```
+{%- endif %}
+{%- if events %}
+
+Events:
+{%- for e in events %}
+- [{{ e.time }}] {{ e.type }} {{ e.reason }}: {{ e.message }}
+{%- endfor %}
+{%- endif %}
+{%- if logs %}
+
+Logs:
+```
+{%- for line in logs %}
+{{ line }}
+{%- endfor %}
+```
+{%- endif %}
+
+Identify the root cause and the single most-likely fix.

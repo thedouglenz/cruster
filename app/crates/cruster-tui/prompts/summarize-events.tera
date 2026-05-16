@@ -1,0 +1,13 @@
+Summarize what's been happening in this Kubernetes namespace.
+
+Cluster: {{ cluster.name }}
+{%- if resource %}
+Scope: {{ resource.key.kind }}/{{ resource.key.namespace | default(value="-") }}/{{ resource.key.name }}
+{%- endif %}
+
+Events:
+{%- for e in events %}
+- [{{ e.time }}] {{ e.type }} {{ e.reason }} ({{ e.message }})
+{%- endfor %}
+
+Give me a 2-3 sentence summary of what these events tell me. Highlight any patterns or concerning sequences.

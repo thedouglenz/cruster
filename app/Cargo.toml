@@ -38,6 +38,7 @@ nucleo-matcher = "0.3"
 arboard = "3"
 toml = "0.8"
 dirs = "5"
+tera = { version = "1", default-features = false }
 
 # TUI
 ratatui = "0.29"

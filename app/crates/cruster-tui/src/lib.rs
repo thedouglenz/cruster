@@ -11,6 +11,7 @@ pub mod kubectl;
 pub mod layout;
 pub mod overlay;
 pub mod overlays;
+pub mod prompts;
 pub mod safety;
 pub mod theme;
 pub mod view;
