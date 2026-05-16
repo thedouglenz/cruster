@@ -182,10 +182,10 @@ impl App {
             return;
         };
         match describe.kubectl_equivalent(self.current_view.as_ref()) {
-            Some(_cmd) => {
-                // Clipboard wiring lands in Task 8.
-                self.toast = Some("copy-kubectl not yet wired (Task 8)".into());
-            }
+            Some(cmd) => match crate::kubectl::copy_to_clipboard(&cmd) {
+                Ok(()) => self.toast = Some(format!("copied: {cmd}")),
+                Err(e) => self.toast = Some(format!("copy failed: {e}")),
+            },
             None => self.toast = Some("no kubectl equivalent for selection".into()),
         }
     }
@@ -333,6 +333,10 @@ impl App {
             }
             KeyCode::Char('e') => {
                 self.edit_selection_yaml();
+                LoopState::Continue
+            }
+            KeyCode::Char('K') => {
+                self.copy_kubectl_for_selection();
                 LoopState::Continue
             }
             _ => self.current_view.handle_key(key),
