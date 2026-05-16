@@ -47,9 +47,8 @@ pub async fn run(cli: &Cli, args: &EventsArgs) -> anyhow::Result<()> {
     // a clear signal that the filter is the reason — not "no events
     // exist". Without this, an empty NDJSON stream is ambiguous and
     // led an agent to second-guess whether `--resource` was supported.
-    let filter_dropped_all = args.resource.is_some()
-        && records.is_empty()
-        && total_before_filter > 0;
+    let filter_dropped_all =
+        args.resource.is_some() && records.is_empty() && total_before_filter > 0;
     if filter_dropped_all {
         let marker = serde_json::json!({
             "matched": 0,

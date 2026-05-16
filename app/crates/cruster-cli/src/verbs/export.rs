@@ -22,15 +22,13 @@ use crate::verbs::get::canonicalise_kind;
 
 pub async fn run(_cli: &Cli, args: &ExportArgs) -> anyhow::Result<()> {
     let (raw_kind, name) = parse_reference(&args.reference)?;
-    let kind_plural = canonicalise_kind(raw_kind)
-        .ok_or_else(|| anyhow::anyhow!("unknown kind: {raw_kind}"))?;
+    let kind_plural =
+        canonicalise_kind(raw_kind).ok_or_else(|| anyhow::anyhow!("unknown kind: {raw_kind}"))?;
     let client = Client::try_default().await?;
 
     let snapshot = match kind_plural {
         "pods" => build_pod_snapshot(&client, name, args).await?,
-        "deployments" => {
-            build_namespaced::<Deployment>(&client, "Deployment", name, args).await?
-        }
+        "deployments" => build_namespaced::<Deployment>(&client, "Deployment", name, args).await?,
         "services" => build_namespaced::<Service>(&client, "Service", name, args).await?,
         "configmaps" => build_namespaced::<ConfigMap>(&client, "ConfigMap", name, args).await?,
         "secrets" => build_namespaced::<Secret>(&client, "Secret", name, args).await?,
@@ -137,11 +135,7 @@ where
     })
 }
 
-async fn build_cluster<T>(
-    client: &Client,
-    kind: &str,
-    name: &str,
-) -> anyhow::Result<Snapshot>
+async fn build_cluster<T>(client: &Client, kind: &str, name: &str) -> anyhow::Result<Snapshot>
 where
     T: Resource<DynamicType = (), Scope = kube::core::ClusterResourceScope>
         + Clone

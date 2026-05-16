@@ -66,6 +66,8 @@ Type `:` to enter command mode, then a kind alias and `Enter`.
 | `s` | exec into pod (Pods only, must be Running); suspends TUI |
 | `f` | port-forward (Pods only); prompts for `local:remote`; gated by read-only |
 | `K` | copy the describe `kubectl` equivalent to clipboard |
+| `P` then `d`/`w`/`s` | **(Pro)** render a prompt template + copy to clipboard. Shipped: `d` diagnose, `w` why-failing, `s` summarize-events. User templates: `~/.config/cruster/prompts/*.toml` |
+| `E` | **(Pro)** export a diagnostic markdown bundle to `./<kind>-<name>-<ts>.md` |
 
 ### Safety
 The top status bar shows `[<context>] <env> <ro|rw>`. Environment is

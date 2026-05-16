@@ -23,10 +23,10 @@ use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
 use crate::overlay::{Overlay, OverlayResult};
-use crate::prompts::PromptDef;
 #[allow(unused_imports)]
 use crate::overlays::palette::{EntryKind, Palette, PaletteEntry};
 use crate::overlays::search::{Filter, SearchPrompt};
+use crate::prompts::PromptDef;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
 use crate::views::deployments::DeploymentsView;
@@ -779,9 +779,7 @@ impl App {
     /// populated from the logs pane buffer iff it's open and targeting
     /// the same pod.
     async fn build_snapshot(&self) -> cruster_core::context::Snapshot {
-        use cruster_core::context::{
-            ClusterContext, EventSummary, ResourceContext, Snapshot,
-        };
+        use cruster_core::context::{ClusterContext, EventSummary, ResourceContext, Snapshot};
 
         let cluster = ClusterContext {
             name: self.context.clone(),
@@ -846,7 +844,11 @@ impl App {
     }
 
     async fn trigger_prompt(&mut self, trigger: char) {
-        let prompt = self.prompts.iter().find(|p| p.trigger() == Some(trigger)).cloned();
+        let prompt = self
+            .prompts
+            .iter()
+            .find(|p| p.trigger() == Some(trigger))
+            .cloned();
         let Some(prompt) = prompt else {
             self.toast = Some(format!("no prompt bound to '{trigger}'"));
             return;

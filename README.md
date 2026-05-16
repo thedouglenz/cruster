@@ -11,21 +11,32 @@ This repository is a monorepo:
 
 ## Status
 
-**Phase 3 + 3E polish complete.** 3E dropped the heavy k9s-style
-borders for a thin top rule + left-edge `▎` selection accent; added
-a pane focus model (Tab cycles between view + open describe/logs
-panes; focused pane title shows `◉`); turned the port-forward prompt
-into a centered modal. 3D added keymap presets (normal/vim/emacs,
-selectable via `~/.config/cruster/keymap.toml`) and named layouts
-(Single/Triplet/Incident, switchable with Alt+1/2/3).
+**Phase 4A complete.** Two Pro-tier agent-bridging features landed:
 
-Everything earlier: Phase 1 skeleton, Phase 2A TUI parity, Phase 2B
-LLM-efficient CLI, Phase 3A ergonomics (palette/search/safety/copy-
-kubectl/history), Phase 3B task-first navigation (relationships/diff/
-workflows), Phase 3C themes (9 bundled, Pro-gated).
+- **Prompt actions (`P` leader)**: press `P` then one of `d` / `w` /
+  `s` to render a Tera template against the current selection +
+  recent events + recent logs, and copy the result to the clipboard.
+  Drop it into Claude Code / Cursor. User templates live in
+  `~/.config/cruster/prompts/*.toml`.
+- **Diagnostic export**: press `E` in the TUI or run `cruster export
+  pod/<name> -n <ns>` from the CLI to produce a self-contained
+  markdown bundle (manifest + events + log tail). One command, one
+  artifact you can paste into an incident ticket or an async agent
+  handoff.
 
-Next: Phase 4 (agent surface — prompt actions, diagnostic export,
-agentskills.io skills, Claude Code plugin).
+Quick wins shipped alongside: `cruster help-json` now inlines every
+verb's JSON schema (agent discovery is one call instead of six);
+`cruster events --resource` emits a clear sentinel when the filter
+drops all events.
+
+Earlier: Phase 1 skeleton, Phase 2A TUI parity, Phase 2B LLM-efficient
+CLI, Phase 3A ergonomics, Phase 3B task-first navigation, Phase 3C
+themes (Pro-gated), Phase 3D keymap presets + named layouts, Phase 3E
+visual polish (thin top rule, `▎` selection accent, pane focus + Tab,
+modal port-forward).
+
+Next: Phase 4B (agentskills.io skills + Claude Code plugin), then
+Phase 5 (license + landing page + polish).
 
 ## Quick start
 
@@ -45,6 +56,7 @@ cargo build --release -p cruster-bin
 ./target/release/cruster events --limit 5
 ./target/release/cruster schema get-pod | jq .title
 ./target/release/cruster help-json | jq '.[].name'
+./target/release/cruster export pod/nginx -n default -o report.md
 ```
 
 See `app/README.md` for the full TUI keymap.
