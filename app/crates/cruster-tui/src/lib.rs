@@ -7,6 +7,7 @@ pub mod app;
 pub mod command;
 pub mod overlay;
 pub mod overlays;
+pub mod safety;
 pub mod view;
 pub mod views;
 

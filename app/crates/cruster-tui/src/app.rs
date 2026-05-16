@@ -8,6 +8,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
+use cruster_core::Environment;
 use cruster_kube::StoreRegistry;
 use kube::Client;
 use ratatui::backend::CrosstermBackend;
@@ -59,11 +60,17 @@ pub struct App {
     port_forwards: PortForwards,
     port_forward_prompt: Option<PortForwardPrompt>,
     overlay: Option<Box<dyn Overlay>>,
+    context: String,
+    environment: Environment,
+    read_only: bool,
     toast: Option<String>,
 }
 
 impl App {
     pub fn new(registry: StoreRegistry, client: Option<Client>) -> Self {
+        let context = load_current_context();
+        let environment = crate::safety::SafetyConfig::load_or_default().classify(&context);
+        let read_only = environment.requires_confirmation();
         Self {
             registry,
             client,
@@ -75,6 +82,9 @@ impl App {
             port_forwards: PortForwards::new(),
             port_forward_prompt: None,
             overlay: None,
+            context,
+            environment,
+            read_only,
             toast: None,
         }
     }
@@ -262,6 +272,19 @@ impl App {
             return LoopState::Continue;
         }
 
+        // Ctrl+R toggles read-only (forbidden in Prod).
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
+            if self.environment == Environment::Prod {
+                self.toast =
+                    Some("read-only is forced for prod contexts; restart with --rw to override".into());
+            } else {
+                self.read_only = !self.read_only;
+                let state = if self.read_only { "ON" } else { "OFF" };
+                self.toast = Some(format!("read-only: {state}"));
+            }
+            return LoopState::Continue;
+        }
+
         // / opens the search prompt.
         if key.code == KeyCode::Char('/') {
             self.overlay = Some(Box::new(SearchPrompt::new()));
@@ -317,6 +340,12 @@ impl App {
     }
 
     fn edit_selection_yaml(&mut self) {
+        if self.read_only {
+            self.toast = Some(
+                "read-only mode: edit disabled (Ctrl+R to toggle)".into(),
+            );
+            return;
+        }
         // Refuse to edit Secrets — the selected_yaml() for SecretsView
         // returns redacted YAML, and applying that would clobber the
         // real values. For v1, point users to kubectl.
@@ -342,6 +371,12 @@ impl App {
     }
 
     fn start_port_forward_prompt(&mut self) {
+        if self.read_only {
+            self.toast = Some(
+                "read-only mode: port-forward disabled (Ctrl+R to toggle)".into(),
+            );
+            return;
+        }
         let Some(key) = self.current_view.selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
@@ -469,11 +504,36 @@ impl App {
         } else {
             self.current_view.render(frame);
         }
+        self.render_safety_badge(frame);
         self.render_action_footer(frame);
         self.render_overlay(frame);
         if let Some(overlay) = &self.overlay {
             overlay.render(frame, frame.area());
         }
+    }
+
+    fn render_safety_badge(&self, frame: &mut Frame<'_>) {
+        let area = frame.area();
+        let mode = if self.read_only { "ro" } else { "rw" };
+        let label = format!(
+            " [{}] {} {} ",
+            self.context, self.environment, mode
+        );
+        let color = match self.environment {
+            Environment::Prod => Color::Red,
+            Environment::Staging => Color::Yellow,
+            Environment::Dev => Color::Green,
+            Environment::Local => Color::Cyan,
+            Environment::Unknown => Color::DarkGray,
+        };
+        let bar = Paragraph::new(label).style(Style::default().bg(color).fg(Color::Black));
+        let rect = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: 1,
+        };
+        frame.render_widget(bar, rect);
     }
 
     fn render_action_footer(&self, frame: &mut Frame<'_>) {
@@ -541,6 +601,15 @@ impl App {
             frame.render_widget(bar, bottom);
         }
     }
+}
+
+/// Resolve the current kubeconfig context name. Falls back to
+/// "unknown" if kubeconfig can't be read.
+fn load_current_context() -> String {
+    let Ok(cfg) = kube::config::Kubeconfig::read() else {
+        return "unknown".into();
+    };
+    cfg.current_context.unwrap_or_else(|| "unknown".into())
 }
 
 fn format_action_hint(key: KeyCode, label: &str) -> String {
