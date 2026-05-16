@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/diff/v1.json",
+  "title": "cruster diff (NDJSON record)",
+  "description": "One record per change. Path uses JSONPath-style dot+bracket notation.",
+  "type": "object",
+  "required": ["kind"],
+  "properties": {
+    "kind": { "enum": ["added", "removed", "modified"] },
+    "path": { "type": "string" },
+    "value": {},
+    "old": {},
+    "new": {}
+  }
+}

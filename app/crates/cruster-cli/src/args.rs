@@ -55,6 +55,25 @@ pub enum Command {
     /// Print machine-readable help (same as `--help --format json`).
     #[command(name = "help-json")]
     HelpJson,
+    /// Structural diff between two resources.
+    Diff(DiffArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct DiffArgs {
+    /// First reference: `kind/name`
+    pub a: String,
+    /// Second reference: `kind/name`
+    pub b: String,
+    /// Convenience: same namespace for both refs.
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
+    /// Namespace for `a` specifically (overrides --namespace).
+    #[arg(long)]
+    pub a_namespace: Option<String>,
+    /// Namespace for `b` specifically (overrides --namespace).
+    #[arg(long)]
+    pub b_namespace: Option<String>,
 }
 
 #[derive(Debug, ValueEnum, Clone, Copy)]

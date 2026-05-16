@@ -1,6 +1,7 @@
 //! CLI verb handlers (one module per verb).
 
 pub mod describe;
+pub mod diff;
 pub mod events;
 pub mod get;
 pub mod help_json;
@@ -17,5 +18,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Events(args) => events::run(&cli, args).await,
         Command::Schema(args) => schema::run(&cli, args).await,
         Command::HelpJson => help_json::run().await,
+        Command::Diff(args) => diff::run(&cli, args).await,
     }
 }
