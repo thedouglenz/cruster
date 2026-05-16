@@ -28,7 +28,7 @@ fn bench_app_construction(c: &mut Criterion) {
     c.bench_function("app_new", |b| {
         b.iter(|| {
             let registry = StoreRegistry::new();
-            let _ = App::new(registry);
+            let _ = App::new(registry, None);
         });
     });
 }

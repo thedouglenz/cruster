@@ -11,6 +11,7 @@ cruster-kube = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
+kube = { workspace = true }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

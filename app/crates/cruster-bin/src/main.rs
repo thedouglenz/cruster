@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_watcher::<Secrets>(client.clone(), registry.secrets.clone());
     spawn_watcher::<Namespaces>(client.clone(), registry.namespaces.clone());
 
-    let mut app = App::new(registry);
+    let mut app = App::new(registry, Some(client));
     app.run().await
 }
 

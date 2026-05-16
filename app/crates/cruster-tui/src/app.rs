@@ -9,6 +9,7 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use cruster_kube::StoreRegistry;
+use kube::Client;
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -17,6 +18,7 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 
 use crate::actions::describe::DescribePane;
+use crate::actions::logs::LogsPane;
 use crate::command::{CommandAction, CommandLine};
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
@@ -36,19 +38,23 @@ pub enum LoopState {
 
 pub struct App {
     registry: StoreRegistry,
+    client: Option<Client>,
     current_view: Box<dyn ResourceView>,
     command: CommandLine,
     describe_pane: DescribePane,
+    logs_pane: LogsPane,
     toast: Option<String>,
 }
 
 impl App {
-    pub fn new(registry: StoreRegistry) -> Self {
+    pub fn new(registry: StoreRegistry, client: Option<Client>) -> Self {
         Self {
             registry,
+            client,
             current_view: Box::new(PodsView::new()),
             command: CommandLine::new(),
             describe_pane: DescribePane::new(),
+            logs_pane: LogsPane::new(),
             toast: None,
         }
     }
@@ -83,9 +89,13 @@ impl App {
         // Clear toast on any keystroke.
         self.toast = None;
 
-        // Describe pane swallows keys when open.
+        // Action panes swallow keys when open.
         if self.describe_pane.is_open() {
             self.describe_pane.handle_key(key);
+            return LoopState::Continue;
+        }
+        if self.logs_pane.is_open() {
+            self.logs_pane.handle_key(key);
             return LoopState::Continue;
         }
 
@@ -117,8 +127,28 @@ impl App {
                 }
                 LoopState::Continue
             }
+            KeyCode::Char('l') => {
+                self.open_logs_for_selection();
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
         }
+    }
+
+    fn open_logs_for_selection(&mut self) {
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        if key.kind != "Pod" {
+            self.toast = Some(format!("logs are only available for pods (selected: {})", key.kind));
+            return;
+        }
+        let Some(client) = self.client.clone() else {
+            self.toast = Some("no kube client (test mode?)".into());
+            return;
+        };
+        self.logs_pane.open(client, &key);
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -148,16 +178,17 @@ impl App {
 
     fn render_full(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
-        if self.describe_pane.is_open() {
+        if self.describe_pane.is_open() || self.logs_pane.is_open() {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(area);
-            // Top: current view rendered to full frame (the view doesn't
-            // know it's being clipped; the pane below overdraws the
-            // bottom half). A cleaner Rect-passing rework is Phase 3.
             self.current_view.render(frame);
-            self.describe_pane.render(frame, chunks[1]);
+            if self.describe_pane.is_open() {
+                self.describe_pane.render(frame, chunks[1]);
+            } else {
+                self.logs_pane.render(frame, chunks[1]);
+            }
         } else {
             self.current_view.render(frame);
         }
@@ -218,7 +249,7 @@ mod tests {
     }
 
     fn app() -> App {
-        App::new(StoreRegistry::new())
+        App::new(StoreRegistry::new(), None)
     }
 
     #[test]
@@ -306,5 +337,13 @@ mod tests {
         // Esc closes the pane
         let _ = a.handle_key(press(KeyCode::Esc));
         assert!(!a.describe_pane.is_open());
+    }
+
+    #[test]
+    fn l_with_no_selection_shows_toast() {
+        let mut a = app();
+        let _ = a.handle_key(press(KeyCode::Char('l')));
+        assert!(!a.logs_pane.is_open());
+        assert!(a.toast.is_some());
     }
 }

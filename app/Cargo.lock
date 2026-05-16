@@ -472,6 +472,7 @@ dependencies = [
  "cruster-kube",
  "futures",
  "k8s-openapi",
+ "kube",
  "ratatui",
  "serde_yaml",
  "tokio",
