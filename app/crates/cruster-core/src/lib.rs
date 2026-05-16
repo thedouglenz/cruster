@@ -48,6 +48,39 @@ impl fmt::Display for ResourceKey {
     }
 }
 
+/// Cluster environment classification, used for safety badging and
+/// read-only-by-default gating. Determined by user-configurable
+/// matchers in `~/.config/cruster/safety.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Environment {
+    Prod,
+    Staging,
+    Dev,
+    Local,
+    Unknown,
+}
+
+impl Environment {
+    /// Whether destructive actions are gated by default for this env.
+    pub fn requires_confirmation(self) -> bool {
+        matches!(self, Self::Prod | Self::Staging)
+    }
+}
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Prod => "prod",
+            Self::Staging => "staging",
+            Self::Dev => "dev",
+            Self::Local => "local",
+            Self::Unknown => "unknown",
+        };
+        f.write_str(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,5 +103,35 @@ mod tests {
         let s = serde_json::to_string(&k).unwrap();
         let back: ResourceKey = serde_json::from_str(&s).unwrap();
         assert_eq!(k, back);
+    }
+
+    #[test]
+    fn prod_requires_confirmation() {
+        assert!(Environment::Prod.requires_confirmation());
+        assert!(Environment::Staging.requires_confirmation());
+        assert!(!Environment::Dev.requires_confirmation());
+        assert!(!Environment::Local.requires_confirmation());
+        assert!(!Environment::Unknown.requires_confirmation());
+    }
+
+    #[test]
+    fn environment_roundtrips_through_json() {
+        for env in [
+            Environment::Prod,
+            Environment::Staging,
+            Environment::Dev,
+            Environment::Local,
+            Environment::Unknown,
+        ] {
+            let s = serde_json::to_string(&env).unwrap();
+            let back: Environment = serde_json::from_str(&s).unwrap();
+            assert_eq!(env, back);
+        }
+    }
+
+    #[test]
+    fn environment_display() {
+        assert_eq!(Environment::Prod.to_string(), "prod");
+        assert_eq!(Environment::Unknown.to_string(), "unknown");
     }
 }
