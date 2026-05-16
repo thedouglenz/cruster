@@ -35,9 +35,7 @@ async fn fetch_pruned(
         .ok_or_else(|| anyhow::anyhow!("unknown kind: {kind}"))?;
     let val = match canonical {
         "pods" => fetch::<k8s_openapi::api::core::v1::Pod>(client, name, ns).await?,
-        "deployments" => {
-            fetch::<k8s_openapi::api::apps::v1::Deployment>(client, name, ns).await?
-        }
+        "deployments" => fetch::<k8s_openapi::api::apps::v1::Deployment>(client, name, ns).await?,
         "services" => fetch::<k8s_openapi::api::core::v1::Service>(client, name, ns).await?,
         "configmaps" => fetch::<k8s_openapi::api::core::v1::ConfigMap>(client, name, ns).await?,
         "secrets" => fetch_secret(client, name, ns).await?,
@@ -66,9 +64,8 @@ where
         + Sync
         + 'static,
 {
-    let ns = ns.ok_or_else(|| {
-        anyhow::anyhow!("-n / --namespace is required for namespaced resources")
-    })?;
+    let ns =
+        ns.ok_or_else(|| anyhow::anyhow!("-n / --namespace is required for namespaced resources"))?;
     let api: kube::Api<T> = kube::Api::namespaced(client.clone(), ns);
     let obj = api.get(name).await?;
     Ok(serde_json::to_value(obj)?)

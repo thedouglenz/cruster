@@ -102,9 +102,7 @@ impl App {
     fn open_workflows_palette(&mut self) {
         let workflows = crate::workflows::load_all();
         if workflows.is_empty() {
-            self.toast = Some(
-                "no workflows in ~/.config/cruster/workflows/ — see the spec".into(),
-            );
+            self.toast = Some("no workflows in ~/.config/cruster/workflows/ — see the spec".into());
             return;
         }
         let entries: Vec<PaletteEntry> = workflows

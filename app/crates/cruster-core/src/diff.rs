@@ -6,9 +6,19 @@ use serde_json::Value;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Change {
-    Added { path: String, value: Value },
-    Removed { path: String, value: Value },
-    Modified { path: String, old: Value, new: Value },
+    Added {
+        path: String,
+        value: Value,
+    },
+    Removed {
+        path: String,
+        value: Value,
+    },
+    Modified {
+        path: String,
+        old: Value,
+        new: Value,
+    },
 }
 
 pub fn diff(a: &Value, b: &Value) -> Vec<Change> {

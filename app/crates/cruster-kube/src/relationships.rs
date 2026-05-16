@@ -183,10 +183,7 @@ async fn related_for_node(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Re
     out
 }
 
-fn labels_match_selector(
-    pod: &Pod,
-    selector: &std::collections::BTreeMap<String, String>,
-) -> bool {
+fn labels_match_selector(pod: &Pod, selector: &std::collections::BTreeMap<String, String>) -> bool {
     let Some(labels) = pod.metadata.labels.as_ref() else {
         return false;
     };

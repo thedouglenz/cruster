@@ -2,10 +2,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_kube::relationships::Related;
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
 
@@ -88,7 +88,11 @@ impl Overlay for RelationshipsOverlay {
             self.title,
             self.related.len()
         ))
-        .block(Block::default().borders(Borders::ALL).title(" Relationships "));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Relationships "),
+        );
         frame.render_widget(header, chunks[0]);
         let items: Vec<ListItem> = self
             .related
