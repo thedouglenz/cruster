@@ -13,7 +13,12 @@ This repository is a monorepo:
 
 ## Status
 
-**Phase 5A complete.** License loader + 14-day trial:
+**Phase 5B complete.** Distribution: `cargo install`, homebrew
+formula, and CI release workflow (macOS arm64/Intel + Linux x86_64).
+See [`docs/RELEASING.md`](docs/RELEASING.md) for the cut-a-release
+runbook.
+
+**Phase 5A.** License loader + 14-day trial:
 
 ```sh
 cruster license show       # current tier; reports "free" if no file
@@ -51,7 +56,35 @@ themes (Pro-gated), Phase 3D keymap presets + named layouts, Phase 3E
 visual polish (thin top rule, `▎` selection accent, pane focus + Tab,
 modal port-forward).
 
-Next: Phase 5 (license + landing page + polish).
+Next: Phase 5C (landing page).
+
+## Install
+
+### Cargo (any platform with a Rust toolchain)
+
+```sh
+cargo install --git https://github.com/thedouglenz/cruster.git \
+  --bin cruster --locked
+```
+
+### Homebrew (macOS / Linux, once the tap is published)
+
+```sh
+brew tap thedouglenz/cruster
+brew install cruster
+```
+
+### Prebuilt binary
+
+Grab the tarball for your platform from the
+[releases page](https://github.com/thedouglenz/cruster/releases),
+extract, and put `cruster` somewhere on `$PATH`.
+
+### From source
+
+```sh
+cd app && cargo build --release && cp target/release/cruster ~/.local/bin/
+```
 
 ## Quick start
 
