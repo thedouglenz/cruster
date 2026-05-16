@@ -1,0 +1,13 @@
+{
+  "name": "cruster",
+  "version": "0.1.0",
+  "description": "Kubernetes TUI + CLI with agent-friendly diagnostics. Ships skills + slash commands for investigating Kubernetes workloads with Claude Code.",
+  "author": "Doug Lenz <thedouglenz@gmail.com>",
+  "homepage": "https://github.com/thedouglenz/cruster",
+  "license": "Proprietary",
+  "skills": ["skills/*"],
+  "commands": ["commands/*"],
+  "prerequisites": {
+    "binaries": ["cruster"]
+  }
+}
