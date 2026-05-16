@@ -3,7 +3,9 @@
 pub mod describe;
 pub mod events;
 pub mod get;
+pub mod help_json;
 pub mod logs;
+pub mod schema;
 
 use crate::args::{Cli, Command};
 
@@ -13,7 +15,7 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Describe(args) => describe::run(&cli, args).await,
         Command::Logs(args) => logs::run(&cli, args).await,
         Command::Events(args) => events::run(&cli, args).await,
-        Command::Schema(_) => anyhow::bail!("schema: not yet implemented (Task 16)"),
-        Command::HelpJson => anyhow::bail!("help-json: not yet implemented (Task 16)"),
+        Command::Schema(args) => schema::run(&cli, args).await,
+        Command::HelpJson => help_json::run().await,
     }
 }
