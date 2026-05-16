@@ -18,7 +18,10 @@ pub const SCHEMAS: &[(&str, &str)] = &[
         include_str!("../schemas/get-service.schema.json"),
     ),
     pair("get-node", include_str!("../schemas/get-node.schema.json")),
-    pair("get-event", include_str!("../schemas/get-event.schema.json")),
+    pair(
+        "get-event",
+        include_str!("../schemas/get-event.schema.json"),
+    ),
     pair(
         "get-configmap",
         include_str!("../schemas/get-configmap.schema.json"),
@@ -65,8 +68,8 @@ mod tests {
     #[test]
     fn every_listed_verb_has_valid_json() {
         for (name, body) in SCHEMAS {
-            let _: serde_json::Value = serde_json::from_str(body)
-                .unwrap_or_else(|e| panic!("schema {name} invalid: {e}"));
+            let _: serde_json::Value =
+                serde_json::from_str(body).unwrap_or_else(|e| panic!("schema {name} invalid: {e}"));
         }
     }
 

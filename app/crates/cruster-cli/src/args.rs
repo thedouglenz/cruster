@@ -146,8 +146,7 @@ mod tests {
 
     #[test]
     fn parses_logs_with_follow_and_grep() {
-        let cli =
-            Cli::try_parse(["cruster", "logs", "nginx", "-f", "--grep", "error"]).unwrap();
+        let cli = Cli::try_parse(["cruster", "logs", "nginx", "-f", "--grep", "error"]).unwrap();
         let Command::Logs(args) = cli.command else {
             panic!("expected Logs")
         };

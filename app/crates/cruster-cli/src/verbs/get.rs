@@ -7,15 +7,13 @@
 use std::io::Write;
 
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{
-    ConfigMap, Event, Namespace, Node, Pod, Secret, Service,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::{Api, Client};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::args::{Cli, GetArgs};
 use crate::args::Format;
+use crate::args::{Cli, GetArgs};
 use crate::format::{write_records, write_records_ndjson_budgeted};
 use crate::output::{effective_format, stdout_is_tty};
 use crate::prune::{prune, redact_secret};
@@ -40,9 +38,7 @@ pub async fn run(cli: &Cli, args: &GetArgs) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("unknown kind: {}", args.kind))?;
     match kind {
         "pods" => run_namespaced::<Pod, _>(cli, args, write_pods_text).await,
-        "deployments" => {
-            run_namespaced::<Deployment, _>(cli, args, write_deployments_text).await
-        }
+        "deployments" => run_namespaced::<Deployment, _>(cli, args, write_deployments_text).await,
         "services" => run_namespaced::<Service, _>(cli, args, write_services_text).await,
         "nodes" => run_cluster::<Node, _>(cli, args, write_nodes_text).await,
         "events" => run_namespaced::<Event, _>(cli, args, write_events_text).await,
@@ -213,7 +209,10 @@ fn write_deployments_text(out: &mut dyn Write, deps: &[Deployment]) -> std::io::
             .as_ref()
             .and_then(|s| s.available_replicas)
             .unwrap_or(0);
-        writeln!(out, "{ns}\t{name}\t{ready}/{desired}\t{updated}\t{available}")?;
+        writeln!(
+            out,
+            "{ns}\t{name}\t{ready}/{desired}\t{updated}\t{available}"
+        )?;
     }
     Ok(())
 }

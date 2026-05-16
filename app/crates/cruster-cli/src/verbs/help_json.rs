@@ -41,10 +41,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
         docs.push(CommandDoc {
             name: sub.get_name().to_string(),
-            about: sub
-                .get_about()
-                .map(|a| a.to_string())
-                .unwrap_or_default(),
+            about: sub.get_about().map(|a| a.to_string()).unwrap_or_default(),
             flags,
         });
     }
