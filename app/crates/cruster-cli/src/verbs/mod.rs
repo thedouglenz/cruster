@@ -1,7 +1,16 @@
 //! CLI verb handlers (one module per verb).
 
-use crate::args::Cli;
+pub mod get;
 
-pub async fn dispatch(_cli: Cli) -> anyhow::Result<()> {
-    anyhow::bail!("no verbs registered yet (Task 4)")
+use crate::args::{Cli, Command};
+
+pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
+    match &cli.command {
+        Command::Get(args) => get::run(&cli, args).await,
+        Command::Describe(_) => anyhow::bail!("describe: not yet implemented (Task 12)"),
+        Command::Logs(_) => anyhow::bail!("logs: not yet implemented (Task 13)"),
+        Command::Events(_) => anyhow::bail!("events: not yet implemented (Task 14)"),
+        Command::Schema(_) => anyhow::bail!("schema: not yet implemented (Task 16)"),
+        Command::HelpJson => anyhow::bail!("help-json: not yet implemented (Task 16)"),
+    }
 }

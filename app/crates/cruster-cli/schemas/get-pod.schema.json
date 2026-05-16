@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/get-pod/v1.json",
+  "title": "cruster get pod (NDJSON record)",
+  "description": "One record per pod. Default mode emits pruned k8s Pod objects (managedFields, resourceVersion, last-applied annotation, status condition timestamps removed).",
+  "type": "object",
+  "required": ["metadata"],
+  "properties": {
+    "apiVersion": { "type": "string" },
+    "kind": { "type": "string", "const": "Pod" },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "namespace"],
+      "properties": {
+        "name": { "type": "string" },
+        "namespace": { "type": "string" },
+        "labels": { "type": "object" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "spec": { "type": "object" },
+    "status": { "type": "object" }
+  }
+}
