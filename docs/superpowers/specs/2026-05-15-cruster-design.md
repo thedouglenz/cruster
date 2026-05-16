@@ -167,6 +167,36 @@ keystroke away (ranked by recency × frequency, atuin-style).
 Backtracking through your navigation is a separate keystroke. Session
 restore reopens your last layout + selections on restart.
 
+**Editing defers to `$EDITOR`.** Cruster does not ship its own text
+editor. Any time the user needs to *write* text — editing a live
+YAML manifest, authoring a prompt action template, editing a theme,
+defining a saved workflow, tweaking safety matchers, scaffolding a
+new skill — cruster suspends the TUI, runs the user's editor on a
+temp file, and resumes when the editor exits. Validation runs on
+the saved buffer; an invalid save is reported and the temp file is
+preserved so the user can fix and retry.
+
+This is a design principle, not a feature in one place. It applies
+everywhere text is edited.
+
+- **Editor resolution order**: `$VISUAL` → `$EDITOR` → `vi`. Matches
+  git, crontab, visudo — universal convention.
+- **`cruster <thing> new <name>`** scaffolds a YAML file with sane
+  defaults and opens it in the editor: `cruster prompt new
+  diagnose-postgres`, `cruster theme new my-dark`, `cruster
+  workflow new why-rollout-stuck`. Same pattern everywhere.
+- **`cruster <thing> edit <name>`** opens an existing one for
+  editing.
+- **Hot reload** on save means the user sees their edit reflected
+  in the running TUI as soon as `:wq` happens — no restart, no
+  re-import.
+
+Rationale: every operator already has muscle memory in their
+editor — vim, emacs, helix, nano, zed, vscode-via-`code -w`,
+whatever. Building our own buffer would either be a worse vim or
+a thing nobody uses. Better to be the small tool that composes
+with the large one.
+
 **Themeable, shareable styling.** Themes are a first-class artifact,
 the way they are in IDEs. The goal is a thriving community
 ecosystem — users build and share themes the way they do for VS
