@@ -9,6 +9,11 @@ license.workspace = true
 name = "cruster"
 path = "src/main.rs"
 
+[[bench]]
+name = "startup"
+harness = false
+path = "../../benches/startup.rs"
+
 [dependencies]
 cruster-core = { workspace = true }
 cruster-kube = { workspace = true }
@@ -19,3 +24,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 kube = { workspace = true }
 k8s-openapi = { workspace = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
