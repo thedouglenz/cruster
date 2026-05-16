@@ -12,6 +12,7 @@ pub mod overlays;
 pub mod safety;
 pub mod view;
 pub mod views;
+pub mod workflows;
 
 pub use action::{Action, ActionRegistry};
 pub use app::App;

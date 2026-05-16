@@ -61,6 +61,7 @@ pub struct App {
     port_forward_prompt: Option<PortForwardPrompt>,
     overlay: Option<Box<dyn Overlay>>,
     history: crate::history::History,
+    loaded_workflows: Vec<crate::workflows::Workflow>,
     context: String,
     environment: Environment,
     read_only: bool,
@@ -89,12 +90,56 @@ impl App {
                 h.record("pods", None);
                 h
             },
+            loaded_workflows: Vec::new(),
             context,
             environment,
             read_only,
             pending_open_relationships: false,
             toast: None,
         }
+    }
+
+    fn open_workflows_palette(&mut self) {
+        let workflows = crate::workflows::load_all();
+        if workflows.is_empty() {
+            self.toast = Some(
+                "no workflows in ~/.config/cruster/workflows/ — see the spec".into(),
+            );
+            return;
+        }
+        let entries: Vec<PaletteEntry> = workflows
+            .iter()
+            .enumerate()
+            .map(|(i, w)| PaletteEntry {
+                id: format!("wf:{i}"),
+                label: format!("Workflow: {}", w.name),
+                kind: EntryKind::View,
+            })
+            .collect();
+        self.loaded_workflows = workflows;
+        self.overlay = Some(Box::new(Palette::new(entries)));
+    }
+
+    fn run_workflow(&mut self, index: usize) {
+        let Some(workflow) = self.loaded_workflows.get(index).cloned() else {
+            self.toast = Some(format!("workflow index out of range: {index}"));
+            return;
+        };
+        for step in &workflow.steps {
+            match step {
+                crate::workflows::Step::SwitchView(id) => match Self::view_for_id(id) {
+                    Some(v) => {
+                        self.current_view = v;
+                        self.history.record(id, None);
+                    }
+                    None => self.toast = Some(format!("workflow: unknown view {id}")),
+                },
+                crate::workflows::Step::SetFilter(query) => {
+                    self.current_view.set_filter(Filter::parse(query));
+                }
+            }
+        }
+        self.toast = Some(format!("ran workflow: {}", workflow.name));
     }
 
     fn open_history_palette(&mut self) {
@@ -270,7 +315,13 @@ impl App {
                 }
                 OverlayResult::SwitchView(id) => {
                     self.overlay = None;
-                    if let Some(v) = Self::view_for_id(&id) {
+                    if let Some(idx_str) = id.strip_prefix("wf:") {
+                        if let Ok(idx) = idx_str.parse::<usize>() {
+                            self.run_workflow(idx);
+                        } else {
+                            self.toast = Some(format!("bad workflow id: {id}"));
+                        }
+                    } else if let Some(v) = Self::view_for_id(&id) {
                         self.current_view = v;
                         self.history.record(&id, None);
                     } else {
@@ -382,6 +433,10 @@ impl App {
                 // (async). Defer to the run loop, which runs the
                 // resolver between input poll and draw.
                 self.pending_open_relationships = true;
+                LoopState::Continue
+            }
+            KeyCode::Char('W') => {
+                self.open_workflows_palette();
                 LoopState::Continue
             }
             _ => self.current_view.handle_key(key),
