@@ -129,7 +129,10 @@ impl License {
             return Ok(tier);
         }
 
-        let sig_b64 = self.signature.as_deref().ok_or(LoadError::MissingSignature)?;
+        let sig_b64 = self
+            .signature
+            .as_deref()
+            .ok_or(LoadError::MissingSignature)?;
         let sig_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(sig_b64)
             .map_err(|_| LoadError::BadSignature)?;
@@ -217,7 +220,8 @@ fn embedded_pubkey() -> VerifyingKey {
     match ENV_HEX {
         Some(hex) => {
             let bytes = decode_hex_32(hex);
-            VerifyingKey::from_bytes(&bytes).expect("CRUSTER_LICENSE_PUBKEY_HEX is not a valid ed25519 pubkey")
+            VerifyingKey::from_bytes(&bytes)
+                .expect("CRUSTER_LICENSE_PUBKEY_HEX is not a valid ed25519 pubkey")
         }
         None => dev_signing_key().verifying_key(),
     }
@@ -238,7 +242,12 @@ pub fn dev_signing_key() -> ed25519_dalek::SigningKey {
 }
 
 fn decode_hex_32(s: &str) -> [u8; 32] {
-    assert_eq!(s.len(), 64, "CRUSTER_LICENSE_PUBKEY_HEX must be 64 hex chars (got {})", s.len());
+    assert_eq!(
+        s.len(),
+        64,
+        "CRUSTER_LICENSE_PUBKEY_HEX must be 64 hex chars (got {})",
+        s.len()
+    );
     let mut out = [0u8; 32];
     for i in 0..32 {
         out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
@@ -346,7 +355,10 @@ mod tests {
             expires_at: fixed_now() + Duration::days(1),
             signature: None,
         };
-        assert!(matches!(l.tier_at(fixed_now()), Err(LoadError::InvalidTier(_))));
+        assert!(matches!(
+            l.tier_at(fixed_now()),
+            Err(LoadError::InvalidTier(_))
+        ));
     }
 
     #[test]
@@ -369,10 +381,8 @@ mod tests {
     fn load_from_roundtrips_through_toml() {
         let l = valid_pro_license();
         let body = l.to_toml();
-        let tmp = std::env::temp_dir().join(format!(
-            "cruster-license-test-{}.toml",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("cruster-license-test-{}.toml", std::process::id()));
         std::fs::write(&tmp, body).unwrap();
         let loaded = License::load_from(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);

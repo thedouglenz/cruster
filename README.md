@@ -13,7 +13,22 @@ This repository is a monorepo:
 
 ## Status
 
-**Phase 4B complete.** The agent distribution surface is shipped:
+**Phase 5A complete.** License loader + 14-day trial:
+
+```sh
+cruster license show       # current tier; reports "free" if no file
+cruster license verify     # exit 0 if license valid, non-zero with reason
+cruster license path       # canonical license file path
+cruster trial              # writes a 14-day Pro trial license
+```
+
+The TUI's existing Pro gates (`P` prompts, `E` export, theme
+switching) now honour the loaded tier. Licenses use ed25519
+signatures against an embedded public key; trial files skip the
+signature but enforce the 14-day cap.
+
+**Phase 4B**: agent distribution surface (skills + Claude Code plugin
++ install.sh).
 
 - **`skills/`** — three agentskills.io-format skills
   (`cruster-investigate-pod`, `cruster-resource-bundle`,
