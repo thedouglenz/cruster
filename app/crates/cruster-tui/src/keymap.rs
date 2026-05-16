@@ -29,6 +29,12 @@ pub enum SemanticAction {
     LayoutSingle,
     LayoutTriplet,
     LayoutIncident,
+    /// Leader: arms the app to consume the next keystroke as a prompt
+    /// trigger char. e.g. `P` then `d` runs the `diagnose` prompt.
+    OpenPromptLeader,
+    /// Build a diagnostic markdown bundle for the current selection
+    /// and write it to a file in the cwd.
+    ExportDiagnostic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -90,6 +96,8 @@ impl Keymap {
         m.insert((KeyCode::Char('1'), alt), SemanticAction::LayoutSingle);
         m.insert((KeyCode::Char('2'), alt), SemanticAction::LayoutTriplet);
         m.insert((KeyCode::Char('3'), alt), SemanticAction::LayoutIncident);
+        m.insert((KeyCode::Char('P'), none), SemanticAction::OpenPromptLeader);
+        m.insert((KeyCode::Char('E'), none), SemanticAction::ExportDiagnostic);
         Self { bindings: m }
     }
 

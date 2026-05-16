@@ -119,6 +119,16 @@ impl LogsPane {
         self.grep_active = false;
     }
 
+    /// Tail of the in-memory log buffer, used by prompts and export.
+    /// Caps to the most recent `limit` lines.
+    pub fn recent_lines(&self, limit: usize) -> Vec<String> {
+        let Ok(buf) = self.lines.lock() else {
+            return Vec::new();
+        };
+        let start = buf.len().saturating_sub(limit);
+        buf[start..].to_vec()
+    }
+
     /// Returns `true` if the key was consumed by the pane.
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         if !self.open || key.kind != KeyEventKind::Press {

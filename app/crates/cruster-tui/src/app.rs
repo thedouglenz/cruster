@@ -23,6 +23,7 @@ use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
 use crate::overlay::{Overlay, OverlayResult};
+use crate::prompts::PromptDef;
 #[allow(unused_imports)]
 use crate::overlays::palette::{EntryKind, Palette, PaletteEntry};
 use crate::overlays::search::{Filter, SearchPrompt};
@@ -73,6 +74,18 @@ pub struct App {
     layout: crate::layout::Layout,
     pane_focus: PaneFocus,
     toast: Option<String>,
+    prompts: Vec<PromptDef>,
+    /// Set when the user presses the prompt leader (`P`). The next
+    /// keystroke is consumed as the prompt-trigger character rather
+    /// than dispatched through the keymap.
+    prompt_leader_armed: bool,
+    /// Deferred work: the next async tick of `run_loop` picks this up,
+    /// builds the snapshot, renders the matching prompt template, and
+    /// copies the result to the clipboard.
+    pending_prompt_trigger: Option<char>,
+    /// Deferred work: `E` was pressed — build a diagnostic export on
+    /// the next async tick.
+    pending_export: bool,
 }
 
 impl App {
@@ -108,6 +121,10 @@ impl App {
             layout: crate::layout::Layout::default(),
             pane_focus: PaneFocus::View,
             toast: None,
+            prompts: crate::prompts::load_all(),
+            prompt_leader_armed: false,
+            pending_prompt_trigger: None,
+            pending_export: false,
         }
     }
 
@@ -248,6 +265,34 @@ impl App {
             S::LayoutIncident => {
                 self.layout = crate::layout::Layout::Incident;
                 self.toast = Some("layout: incident".into());
+                LoopState::Continue
+            }
+            S::OpenPromptLeader => {
+                if !self.tier.has_pro() {
+                    self.toast = Some("prompt actions are a Pro feature".into());
+                    return LoopState::Continue;
+                }
+                if self.prompts.is_empty() {
+                    self.toast = Some("no prompts configured".into());
+                    return LoopState::Continue;
+                }
+                self.prompt_leader_armed = true;
+                self.toast = Some(format!(
+                    "prompt: press {} (or esc)",
+                    prompt_trigger_hints(&self.prompts)
+                ));
+                LoopState::Continue
+            }
+            S::ExportDiagnostic => {
+                if !self.tier.has_pro() {
+                    self.toast = Some("diagnostic export is a Pro feature".into());
+                    return LoopState::Continue;
+                }
+                if self.current_view.selected_key().is_none() {
+                    self.toast = Some("nothing selected to export".into());
+                    return LoopState::Continue;
+                }
+                self.pending_export = true;
                 LoopState::Continue
             }
         }
@@ -476,6 +521,24 @@ impl App {
             return LoopState::Continue;
         }
 
+        // Prompt leader armed: this keystroke chooses the prompt (or
+        // cancels). Consume it before doing anything else so it can't
+        // bleed into a view binding (e.g. armed → user presses `d`
+        // shouldn't open the describe pane).
+        if self.prompt_leader_armed {
+            self.prompt_leader_armed = false;
+            self.toast = None;
+            match key.code {
+                KeyCode::Char(c) => {
+                    self.pending_prompt_trigger = Some(c);
+                }
+                _ => {
+                    self.toast = Some("prompt cancelled".into());
+                }
+            }
+            return LoopState::Continue;
+        }
+
         // Clear toast on any keystroke.
         self.toast = None;
 
@@ -692,6 +755,13 @@ impl App {
                 self.pending_open_relationships = false;
                 self.open_relationships_overlay().await;
             }
+            if let Some(trigger) = self.pending_prompt_trigger.take() {
+                self.trigger_prompt(trigger).await;
+            }
+            if self.pending_export {
+                self.pending_export = false;
+                self.run_export().await;
+            }
             terminal.draw(|f| self.render_full(f))?;
 
             if event::poll(Duration::from_millis(100))? {
@@ -701,6 +771,125 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    /// Build a `Snapshot` from current app state. Events are filtered
+    /// to those that involve the currently selected resource. Logs are
+    /// populated from the logs pane buffer iff it's open and targeting
+    /// the same pod.
+    async fn build_snapshot(&self) -> cruster_core::context::Snapshot {
+        use cruster_core::context::{
+            ClusterContext, EventSummary, ResourceContext, Snapshot,
+        };
+
+        let cluster = ClusterContext {
+            name: self.context.clone(),
+            context: self.context.clone(),
+            environment: self.environment.to_string(),
+        };
+
+        let mut resource = None;
+        let mut events: Vec<EventSummary> = Vec::new();
+        let selected = self.current_view.selected_key();
+        if let Some(key) = &selected {
+            let raw_yaml = self
+                .current_view
+                .selected_yaml()
+                .map(|(_, y)| y)
+                .unwrap_or_default();
+            resource = Some(ResourceContext {
+                key: key.clone(),
+                status_summary: String::new(),
+                age: String::new(),
+                raw_yaml,
+            });
+
+            let all = self.registry.events.snapshot().await;
+            for (_, e) in all {
+                let kind_match = e.involved_object.kind.as_deref() == Some(key.kind.as_str());
+                let name_match = e.involved_object.name.as_deref() == Some(key.name.as_str());
+                if !(kind_match && name_match) {
+                    continue;
+                }
+                let time = e
+                    .last_timestamp
+                    .as_ref()
+                    .map(|t| t.0.to_rfc3339())
+                    .unwrap_or_default();
+                events.push(EventSummary {
+                    time,
+                    type_: e.type_.clone().unwrap_or_default(),
+                    reason: e.reason.clone().unwrap_or_default(),
+                    message: e.message.clone().unwrap_or_default(),
+                });
+            }
+            // Most recent first, capped to keep templates compact.
+            events.sort_by(|a, b| b.time.cmp(&a.time));
+            events.truncate(20);
+        }
+
+        let logs = if self.logs_pane.is_open() {
+            self.logs_pane.recent_lines(50)
+        } else {
+            Vec::new()
+        };
+
+        Snapshot {
+            cluster,
+            resource,
+            events,
+            logs,
+            selection: None,
+            pane: Some(format!("{:?}", self.pane_focus).to_lowercase()),
+        }
+    }
+
+    async fn trigger_prompt(&mut self, trigger: char) {
+        let prompt = self.prompts.iter().find(|p| p.trigger() == Some(trigger)).cloned();
+        let Some(prompt) = prompt else {
+            self.toast = Some(format!("no prompt bound to '{trigger}'"));
+            return;
+        };
+        let snapshot = self.build_snapshot().await;
+        let rendered = match crate::prompts::render(&prompt.template, &snapshot) {
+            Ok(s) => s,
+            Err(e) => {
+                self.toast = Some(format!("prompt '{}' render failed: {e}", prompt.name));
+                return;
+            }
+        };
+        match crate::kubectl::copy_to_clipboard(&rendered) {
+            Ok(()) => {
+                self.toast = Some(format!(
+                    "copied prompt '{}' to clipboard ({} chars)",
+                    prompt.name,
+                    rendered.len()
+                ));
+            }
+            Err(e) => {
+                self.toast = Some(format!("prompt copy failed: {e}"));
+            }
+        }
+    }
+
+    async fn run_export(&mut self) {
+        let snapshot = self.build_snapshot().await;
+        let Some(resource) = snapshot.resource.as_ref() else {
+            self.toast = Some("nothing selected to export".into());
+            return;
+        };
+        let md = crate::export::build_markdown(&snapshot);
+        let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let filename = format!(
+            "{}-{}-{}.md",
+            resource.key.kind.to_lowercase(),
+            resource.key.name,
+            ts
+        );
+        match std::fs::write(&filename, md) {
+            Ok(()) => self.toast = Some(format!("wrote {filename}")),
+            Err(e) => self.toast = Some(format!("export failed: {e}")),
         }
     }
 
@@ -848,6 +1037,15 @@ fn load_current_context() -> String {
         return "unknown".into();
     };
     cfg.current_context.unwrap_or_else(|| "unknown".into())
+}
+
+fn prompt_trigger_hints(prompts: &[PromptDef]) -> String {
+    prompts
+        .iter()
+        .filter_map(|p| p.trigger())
+        .map(|c| c.to_string())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn format_action_hint(key: KeyCode, label: &str) -> String {
@@ -1035,5 +1233,57 @@ mod tests {
             "[d] Describe"
         );
         assert_eq!(format_action_hint(KeyCode::Esc, "Cancel"), "[esc] Cancel");
+    }
+
+    #[test]
+    fn pressing_capital_p_on_free_tier_shows_pro_toast() {
+        let mut a = app();
+        let _ = a.handle_key(press(KeyCode::Char('P')));
+        // Free tier: no armed state, no pending trigger, just a toast.
+        assert!(!a.prompt_leader_armed);
+        assert!(a.pending_prompt_trigger.is_none());
+        assert!(a.toast.as_deref().unwrap_or("").contains("Pro"));
+    }
+
+    #[test]
+    fn pressing_capital_e_on_free_tier_shows_pro_toast() {
+        let mut a = app();
+        let _ = a.handle_key(press(KeyCode::Char('E')));
+        assert!(!a.pending_export);
+        assert!(a.toast.as_deref().unwrap_or("").contains("Pro"));
+    }
+
+    #[test]
+    fn armed_leader_consumes_next_char_and_defers_prompt() {
+        let mut a = app();
+        // Manually arm — simulates a Pro-tier user passing the gate.
+        a.prompt_leader_armed = true;
+        a.toast = Some("prompt: press d/w/s (or esc)".into());
+        let _ = a.handle_key(press(KeyCode::Char('d')));
+        assert!(!a.prompt_leader_armed);
+        assert_eq!(a.pending_prompt_trigger, Some('d'));
+        // The describe pane should NOT have opened — armed state
+        // intercepted the `d` before keymap dispatch.
+        assert!(!a.describe_pane.is_open());
+    }
+
+    #[test]
+    fn armed_leader_esc_cancels_with_toast() {
+        let mut a = app();
+        a.prompt_leader_armed = true;
+        let _ = a.handle_key(press(KeyCode::Esc));
+        assert!(!a.prompt_leader_armed);
+        assert!(a.pending_prompt_trigger.is_none());
+        assert!(a.toast.as_deref().unwrap_or("").contains("cancelled"));
+    }
+
+    #[test]
+    fn prompt_trigger_hints_lists_unique_chars() {
+        let prompts = crate::prompts::load_all();
+        let hints = prompt_trigger_hints(&prompts);
+        // shipped defaults: d, w, s
+        assert!(hints.contains('d'));
+        assert!(hints.contains('w'));
+        assert!(hints.contains('s'));
     }
 }
