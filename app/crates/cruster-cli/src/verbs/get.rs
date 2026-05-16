@@ -15,7 +15,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::args::{Cli, GetArgs};
-use crate::format::write_records;
+use crate::args::Format;
+use crate::format::{write_records, write_records_ndjson_budgeted};
 use crate::output::{effective_format, stdout_is_tty};
 use crate::prune::{prune, redact_secret};
 
@@ -120,9 +121,13 @@ where
 
     let format = effective_format(cli.format, cli.llm, stdout_is_tty());
     let mut stdout = std::io::stdout().lock();
-    write_records(&mut stdout, format, &records, |w, _vs| {
-        text_writer(w as &mut dyn Write, &items)
-    })?;
+    if matches!(format, Format::Ndjson) && cli.budget.is_some() {
+        write_records_ndjson_budgeted(&mut stdout, &records, cli.budget)?;
+    } else {
+        write_records(&mut stdout, format, &records, |w, _vs| {
+            text_writer(w as &mut dyn Write, &items)
+        })?;
+    }
     Ok(())
 }
 
@@ -151,9 +156,13 @@ async fn run_secrets(cli: &Cli, args: &GetArgs) -> anyhow::Result<()> {
 
     let format = effective_format(cli.format, cli.llm, stdout_is_tty());
     let mut stdout = std::io::stdout().lock();
-    write_records(&mut stdout, format, &records, |w, _vs| {
-        write_secrets_text(w as &mut dyn Write, &items)
-    })?;
+    if matches!(format, Format::Ndjson) && cli.budget.is_some() {
+        write_records_ndjson_budgeted(&mut stdout, &records, cli.budget)?;
+    } else {
+        write_records(&mut stdout, format, &records, |w, _vs| {
+            write_secrets_text(w as &mut dyn Write, &items)
+        })?;
+    }
     Ok(())
 }
 
