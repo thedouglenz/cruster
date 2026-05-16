@@ -11,11 +11,13 @@ This repository is a monorepo:
 
 ## Status
 
-**Phase 3 complete.** 3D added keymap presets (normal/vim/emacs,
+**Phase 3 + 3E polish complete.** 3E dropped the heavy k9s-style
+borders for a thin top rule + left-edge `▎` selection accent; added
+a pane focus model (Tab cycles between view + open describe/logs
+panes; focused pane title shows `◉`); turned the port-forward prompt
+into a centered modal. 3D added keymap presets (normal/vim/emacs,
 selectable via `~/.config/cruster/keymap.toml`) and named layouts
-(Single/Triplet/Incident, switchable with Alt+1/2/3). All input now
-flows through a `Keymap` that resolves chords to semantic actions —
-swap presets without recompiling.
+(Single/Triplet/Incident, switchable with Alt+1/2/3).
 
 Everything earlier: Phase 1 skeleton, Phase 2A TUI parity, Phase 2B
 LLM-efficient CLI, Phase 3A ergonomics (palette/search/safety/copy-
@@ -24,8 +26,6 @@ workflows), Phase 3C themes (9 bundled, Pro-gated).
 
 Next: Phase 4 (agent surface — prompt actions, diagnostic export,
 agentskills.io skills, Claude Code plugin).
-
-Next: Phase 3D (keymap presets + named layouts).
 
 ## Quick start
 

@@ -41,6 +41,7 @@ cargo test --workspace
 | `r` | relationships (jump to related resource — owner, mounted cm/secret, service, node) |
 | `W` | run a saved workflow from `~/.config/cruster/workflows/*.toml` |
 | `T` | theme palette (9 bundled themes; switching to non-default is Pro) |
+| `Tab` | cycle focus between view ↔ open pane(s); focused pane title shows `◉` |
 
 ### Switching kinds
 Type `:` to enter command mode, then a kind alias and `Enter`.
