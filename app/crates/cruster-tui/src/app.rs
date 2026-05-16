@@ -68,6 +68,8 @@ pub struct App {
     pending_open_relationships: bool,
     theme: crate::theme::Theme,
     tier: Tier,
+    keymap: crate::keymap::Keymap,
+    layout: crate::layout::Layout,
     toast: Option<String>,
 }
 
@@ -99,8 +101,124 @@ impl App {
             pending_open_relationships: false,
             theme: crate::theme::Theme::terminal_default(),
             tier: Tier::default(),
+            keymap: crate::keymap::Keymap::for_preset(
+                crate::keymap::KeymapConfig::load_or_default().preset,
+            ),
+            layout: crate::layout::Layout::default(),
             toast: None,
         }
+    }
+
+    fn dispatch_semantic(&mut self, action: crate::keymap::SemanticAction) -> LoopState {
+        use crate::keymap::SemanticAction as S;
+        match action {
+            S::Quit => LoopState::Quit,
+            S::MoveUp => {
+                self.synthetic_key_to_view(KeyCode::Char('k'));
+                LoopState::Continue
+            }
+            S::MoveDown => {
+                self.synthetic_key_to_view(KeyCode::Char('j'));
+                LoopState::Continue
+            }
+            S::MoveTop => {
+                self.synthetic_key_to_view(KeyCode::Char('g'));
+                LoopState::Continue
+            }
+            S::MoveBottom => {
+                self.synthetic_key_to_view(KeyCode::Char('G'));
+                LoopState::Continue
+            }
+            S::OpenPalette => {
+                self.open_palette();
+                LoopState::Continue
+            }
+            S::OpenSearch => {
+                self.overlay = Some(Box::new(SearchPrompt::new()));
+                LoopState::Continue
+            }
+            S::OpenCommandMode => {
+                self.command.activate();
+                LoopState::Continue
+            }
+            S::OpenHistory => {
+                self.open_history_palette();
+                LoopState::Continue
+            }
+            S::OpenWorkflows => {
+                self.open_workflows_palette();
+                LoopState::Continue
+            }
+            S::OpenThemes => {
+                self.open_themes_palette();
+                LoopState::Continue
+            }
+            S::OpenRelationships => {
+                self.pending_open_relationships = true;
+                LoopState::Continue
+            }
+            S::Describe => {
+                if let Some((title, yaml)) = self.current_view.selected_yaml() {
+                    self.describe_pane.open(title, yaml);
+                } else {
+                    self.toast = Some("nothing selected".into());
+                }
+                LoopState::Continue
+            }
+            S::Logs => {
+                self.open_logs_for_selection();
+                LoopState::Continue
+            }
+            S::Exec => {
+                self.exec_into_selection();
+                LoopState::Continue
+            }
+            S::PortForward => {
+                self.start_port_forward_prompt();
+                LoopState::Continue
+            }
+            S::EditYaml => {
+                self.edit_selection_yaml();
+                LoopState::Continue
+            }
+            S::CopyKubectl => {
+                self.copy_kubectl_for_selection();
+                LoopState::Continue
+            }
+            S::ToggleReadOnly => {
+                if self.environment == Environment::Prod {
+                    self.toast = Some(
+                        "read-only is forced for prod contexts; restart with --rw to override"
+                            .into(),
+                    );
+                } else {
+                    self.read_only = !self.read_only;
+                    let state = if self.read_only { "ON" } else { "OFF" };
+                    self.toast = Some(format!("read-only: {state}"));
+                }
+                LoopState::Continue
+            }
+            S::LayoutSingle => {
+                self.layout = crate::layout::Layout::Single;
+                self.toast = Some("layout: single".into());
+                LoopState::Continue
+            }
+            S::LayoutTriplet => {
+                self.layout = crate::layout::Layout::Triplet;
+                self.toast = Some("layout: triplet".into());
+                LoopState::Continue
+            }
+            S::LayoutIncident => {
+                self.layout = crate::layout::Layout::Incident;
+                self.toast = Some("layout: incident".into());
+                LoopState::Continue
+            }
+        }
+    }
+
+    fn synthetic_key_to_view(&mut self, code: KeyCode) {
+        let key = KeyEvent::new(code, KeyModifiers::NONE);
+        self.current_view.handle_key(key);
     }
 
     fn open_themes_palette(&mut self) {
@@ -379,32 +497,6 @@ impl App {
             return LoopState::Continue;
         }
 
-        // Ctrl+P opens the command palette.
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('p') {
-            self.open_palette();
-            return LoopState::Continue;
-        }
-
-        // Ctrl+R toggles read-only (forbidden in Prod).
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
-            if self.environment == Environment::Prod {
-                self.toast = Some(
-                    "read-only is forced for prod contexts; restart with --rw to override".into(),
-                );
-            } else {
-                self.read_only = !self.read_only;
-                let state = if self.read_only { "ON" } else { "OFF" };
-                self.toast = Some(format!("read-only: {state}"));
-            }
-            return LoopState::Continue;
-        }
-
-        // / opens the search prompt.
-        if key.code == KeyCode::Char('/') {
-            self.overlay = Some(Box::new(SearchPrompt::new()));
-            return LoopState::Continue;
-        }
-
         if self.command.is_active() {
             match self.command.handle_key(key) {
                 CommandAction::None | CommandAction::Cancel => {}
@@ -422,61 +514,14 @@ impl App {
             return LoopState::Continue;
         }
 
-        match key.code {
-            KeyCode::Char(':') => {
-                self.command.activate();
-                LoopState::Continue
-            }
-            KeyCode::Char('q') | KeyCode::Esc => LoopState::Quit,
-            KeyCode::Char('d') | KeyCode::Char('y') => {
-                if let Some((title, yaml)) = self.current_view.selected_yaml() {
-                    self.describe_pane.open(title, yaml);
-                } else {
-                    self.toast = Some("nothing selected".into());
-                }
-                LoopState::Continue
-            }
-            KeyCode::Char('l') => {
-                self.open_logs_for_selection();
-                LoopState::Continue
-            }
-            KeyCode::Char('s') => {
-                self.exec_into_selection();
-                LoopState::Continue
-            }
-            KeyCode::Char('f') => {
-                self.start_port_forward_prompt();
-                LoopState::Continue
-            }
-            KeyCode::Char('e') => {
-                self.edit_selection_yaml();
-                LoopState::Continue
-            }
-            KeyCode::Char('K') => {
-                self.copy_kubectl_for_selection();
-                LoopState::Continue
-            }
-            KeyCode::Char('H') => {
-                self.open_history_palette();
-                LoopState::Continue
-            }
-            KeyCode::Char('r') => {
-                // Resolving relationships needs registry snapshots
-                // (async). Defer to the run loop, which runs the
-                // resolver between input poll and draw.
-                self.pending_open_relationships = true;
-                LoopState::Continue
-            }
-            KeyCode::Char('W') => {
-                self.open_workflows_palette();
-                LoopState::Continue
-            }
-            KeyCode::Char('T') => {
-                self.open_themes_palette();
-                LoopState::Continue
-            }
-            _ => self.current_view.handle_key(key),
+        // Route through the user's keymap preset. If the chord is bound
+        // to a semantic action, dispatch it. Otherwise fall through to
+        // the current view (handles arrow keys etc).
+        if let Some(action) = self.keymap.resolve(key.code, key.modifiers) {
+            return self.dispatch_semantic(action);
         }
+
+        self.current_view.handle_key(key)
     }
 
     fn edit_selection_yaml(&mut self) {
@@ -673,7 +718,13 @@ impl App {
     fn render_safety_badge(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
         let mode = if self.read_only { "ro" } else { "rw" };
-        let label = format!(" [{}] {} {} ", self.context, self.environment, mode);
+        let label = format!(
+            " [{}] {} {} · layout:{} ",
+            self.context,
+            self.environment,
+            mode,
+            self.layout.label()
+        );
         let color = match self.environment {
             Environment::Prod => self.theme.env_band.prod.as_ratatui(),
             Environment::Staging => self.theme.env_band.staging.as_ratatui(),
