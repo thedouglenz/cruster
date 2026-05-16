@@ -8,7 +8,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use cruster_core::Environment;
+use cruster_core::{Environment, tier::Tier};
 use cruster_kube::StoreRegistry;
 use kube::Client;
 use ratatui::backend::CrosstermBackend;
@@ -66,6 +66,8 @@ pub struct App {
     environment: Environment,
     read_only: bool,
     pending_open_relationships: bool,
+    theme: crate::theme::Theme,
+    tier: Tier,
     toast: Option<String>,
 }
 
@@ -95,7 +97,37 @@ impl App {
             environment,
             read_only,
             pending_open_relationships: false,
+            theme: crate::theme::Theme::terminal_default(),
+            tier: Tier::default(),
             toast: None,
+        }
+    }
+
+    fn open_themes_palette(&mut self) {
+        let entries: Vec<PaletteEntry> = crate::theme::Theme::bundled_names()
+            .iter()
+            .map(|name| PaletteEntry {
+                id: format!("theme:{name}"),
+                label: format!("Theme: {name}"),
+                kind: EntryKind::View,
+            })
+            .collect();
+        self.overlay = Some(Box::new(Palette::new(entries)));
+    }
+
+    fn apply_theme(&mut self, name: &str) {
+        if name != "terminal" && !self.tier.has_pro() {
+            self.toast = Some(format!("theme '{name}' is a Pro feature"));
+            return;
+        }
+        match crate::theme::Theme::embedded(name) {
+            Some(t) => {
+                self.theme = t;
+                self.toast = Some(format!("theme: {name}"));
+            }
+            None => {
+                self.toast = Some(format!("unknown theme: {name}"));
+            }
         }
     }
 
@@ -319,6 +351,8 @@ impl App {
                         } else {
                             self.toast = Some(format!("bad workflow id: {id}"));
                         }
+                    } else if let Some(name) = id.strip_prefix("theme:") {
+                        self.apply_theme(name);
                     } else if let Some(v) = Self::view_for_id(&id) {
                         self.current_view = v;
                         self.history.record(&id, None);
@@ -435,6 +469,10 @@ impl App {
             }
             KeyCode::Char('W') => {
                 self.open_workflows_palette();
+                LoopState::Continue
+            }
+            KeyCode::Char('T') => {
+                self.open_themes_palette();
                 LoopState::Continue
             }
             _ => self.current_view.handle_key(key),
@@ -637,11 +675,11 @@ impl App {
         let mode = if self.read_only { "ro" } else { "rw" };
         let label = format!(" [{}] {} {} ", self.context, self.environment, mode);
         let color = match self.environment {
-            Environment::Prod => Color::Red,
-            Environment::Staging => Color::Yellow,
-            Environment::Dev => Color::Green,
-            Environment::Local => Color::Cyan,
-            Environment::Unknown => Color::DarkGray,
+            Environment::Prod => self.theme.env_band.prod.as_ratatui(),
+            Environment::Staging => self.theme.env_band.staging.as_ratatui(),
+            Environment::Dev => self.theme.env_band.dev.as_ratatui(),
+            Environment::Local => self.theme.env_band.local.as_ratatui(),
+            Environment::Unknown => self.theme.env_band.unknown.as_ratatui(),
         };
         let bar = Paragraph::new(label).style(Style::default().bg(color).fg(Color::Black));
         let rect = Rect {
@@ -678,7 +716,8 @@ impl App {
             line.push_str(sep);
             line.push_str(&p);
         }
-        let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+        let bar = Paragraph::new(line)
+            .style(Style::default().bg(self.theme.footer_bg.as_ratatui()));
         let rect = Rect {
             x: area.x,
             y: area.y + area.height.saturating_sub(2),
@@ -703,18 +742,22 @@ impl App {
                 "port-forward pod/{}: {}_ (esc cancels)",
                 prompt.pod_key.name, prompt.buffer
             );
-            let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+            let bar = Paragraph::new(line)
+                .style(Style::default().bg(self.theme.command_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         } else if self.command.is_active() {
             let line = format!(":{}", self.command.buffer());
-            let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+            let bar = Paragraph::new(line)
+                .style(Style::default().bg(self.theme.command_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         } else if let Some(msg) = &self.toast {
-            let bar = Paragraph::new(msg.clone()).style(Style::default().bg(Color::Red));
+            let bar = Paragraph::new(msg.clone())
+                .style(Style::default().bg(self.theme.toast_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         } else if !self.port_forwards.is_empty() {
             let line = format!(" port-forwards: {} active ", self.port_forwards.len());
-            let bar = Paragraph::new(line).style(Style::default().bg(Color::Blue));
+            let bar = Paragraph::new(line)
+                .style(Style::default().bg(self.theme.search_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         }
     }
