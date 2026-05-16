@@ -6,16 +6,15 @@ use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use cruster_kube::ResourceStore;
-use k8s_openapi::api::core::v1::Pod;
-use ratatui::backend::CrosstermBackend;
+use cruster_kube::StoreRegistry;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
+use crate::view::ResourceView;
 use crate::views::pods::PodsView;
 
-/// Whether the app should keep running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopState {
     Continue,
@@ -23,49 +22,37 @@ pub enum LoopState {
 }
 
 pub struct App {
-    pod_store: ResourceStore<Pod>,
-    pods_view: PodsView,
+    registry: StoreRegistry,
+    current_view: Box<dyn ResourceView>,
 }
 
 impl App {
-    pub fn new(pod_store: ResourceStore<Pod>) -> Self {
+    pub fn new(registry: StoreRegistry) -> Self {
         Self {
-            pod_store,
-            pods_view: PodsView::new(),
+            registry,
+            current_view: Box::new(PodsView::new()),
         }
     }
 
-    /// Pure handler — no I/O. Returns what the loop should do next.
+    /// Replace the currently active view.
+    pub fn switch_view(&mut self, view: Box<dyn ResourceView>) {
+        self.current_view = view;
+    }
+
+    /// Pure, top-level key handler.
     ///
-    /// `row_count` is the current visible row count; we need it to
-    /// clamp `move_down` past the end.
-    pub fn handle_key(&mut self, key: KeyEvent, row_count: usize) -> LoopState {
+    /// Returns `LoopState::Quit` for global quit (`q`, `Esc`).
+    /// Otherwise delegates to the current view.
+    pub fn handle_key(&mut self, key: KeyEvent) -> LoopState {
         if key.kind != KeyEventKind::Press {
             return LoopState::Continue;
         }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => LoopState::Quit,
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.pods_view.move_down(row_count);
-                LoopState::Continue
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.pods_view.move_up();
-                LoopState::Continue
-            }
-            KeyCode::Char('g') | KeyCode::Home => {
-                self.pods_view.move_to_top();
-                LoopState::Continue
-            }
-            KeyCode::Char('G') | KeyCode::End => {
-                self.pods_view.move_to_bottom(row_count);
-                LoopState::Continue
-            }
-            _ => LoopState::Continue,
+            _ => self.current_view.handle_key(key),
         }
     }
 
-    /// Main loop. Runs until the user quits or the terminal closes.
     pub async fn run(&mut self) -> anyhow::Result<()> {
         let mut terminal = init_terminal()?;
         let result = self.run_loop(&mut terminal).await;
@@ -78,15 +65,12 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     ) -> anyhow::Result<()> {
         loop {
-            let snapshot = self.pod_store.snapshot().await;
-            let row_count = snapshot.len();
-            terminal.draw(|f| self.pods_view.render(f, &snapshot))?;
+            self.current_view.refresh(&self.registry).await;
+            terminal.draw(|f| self.current_view.render(f))?;
 
-            // Poll with a short timeout so the snapshot refreshes when
-            // no key is pressed.
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
-                    if self.handle_key(key, row_count) == LoopState::Quit {
+                    if self.handle_key(key) == LoopState::Quit {
                         return Ok(());
                     }
                 }
@@ -124,62 +108,29 @@ mod tests {
     }
 
     fn app() -> App {
-        App::new(ResourceStore::<Pod>::new())
+        App::new(StoreRegistry::new())
     }
 
     #[test]
     fn q_quits() {
         let mut a = app();
-        assert_eq!(a.handle_key(press(KeyCode::Char('q')), 0), LoopState::Quit);
+        assert_eq!(a.handle_key(press(KeyCode::Char('q'))), LoopState::Quit);
     }
 
     #[test]
     fn esc_quits() {
         let mut a = app();
-        assert_eq!(a.handle_key(press(KeyCode::Esc), 0), LoopState::Quit);
+        assert_eq!(a.handle_key(press(KeyCode::Esc)), LoopState::Quit);
     }
 
     #[test]
-    fn unknown_key_continues() {
+    fn unknown_key_continues_via_view() {
         let mut a = app();
-        assert_eq!(
-            a.handle_key(press(KeyCode::Char('x')), 0),
-            LoopState::Continue
-        );
+        assert_eq!(a.handle_key(press(KeyCode::Char('x'))), LoopState::Continue);
     }
 
     #[test]
-    fn down_advances_selection() {
-        let mut a = app();
-        a.handle_key(press(KeyCode::Char('j')), 3);
-        assert_eq!(a.pods_view.selected(), 1);
-    }
-
-    #[test]
-    fn down_clamps_at_last_row() {
-        let mut a = app();
-        for _ in 0..10 {
-            a.handle_key(press(KeyCode::Char('j')), 3);
-        }
-        assert_eq!(a.pods_view.selected(), 2);
-    }
-
-    #[test]
-    fn up_does_not_underflow() {
-        let mut a = app();
-        a.handle_key(press(KeyCode::Char('k')), 3);
-        assert_eq!(a.pods_view.selected(), 0);
-    }
-
-    #[test]
-    fn capital_g_jumps_to_bottom() {
-        let mut a = app();
-        a.handle_key(press(KeyCode::Char('G')), 5);
-        assert_eq!(a.pods_view.selected(), 4);
-    }
-
-    #[test]
-    fn key_release_is_ignored() {
+    fn key_release_is_ignored_at_app_level() {
         let mut a = app();
         let release = KeyEvent {
             code: KeyCode::Char('q'),
@@ -187,6 +138,6 @@ mod tests {
             kind: KeyEventKind::Release,
             state: KeyEventState::NONE,
         };
-        assert_eq!(a.handle_key(release, 0), LoopState::Continue);
+        assert_eq!(a.handle_key(release), LoopState::Continue);
     }
 }

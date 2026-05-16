@@ -5,8 +5,8 @@
 //! latency are deliberately excluded; they belong in an integration
 //! benchmark, not a CI-runnable micro-bench.
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use cruster_kube::ResourceStore;
+use criterion::{Criterion, criterion_group, criterion_main};
+use cruster_kube::{ResourceStore, StoreRegistry};
 use cruster_tui::App;
 use k8s_openapi::api::core::v1::Pod;
 
@@ -18,14 +18,25 @@ fn bench_store_construction(c: &mut Criterion) {
     });
 }
 
+fn bench_registry_construction(c: &mut Criterion) {
+    c.bench_function("registry_new", |b| {
+        b.iter(StoreRegistry::new);
+    });
+}
+
 fn bench_app_construction(c: &mut Criterion) {
     c.bench_function("app_new", |b| {
         b.iter(|| {
-            let store = ResourceStore::<Pod>::new();
-            let _ = App::new(store);
+            let registry = StoreRegistry::new();
+            let _ = App::new(registry);
         });
     });
 }
 
-criterion_group!(benches, bench_store_construction, bench_app_construction);
+criterion_group!(
+    benches,
+    bench_store_construction,
+    bench_registry_construction,
+    bench_app_construction
+);
 criterion_main!(benches);
