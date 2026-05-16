@@ -57,18 +57,31 @@ pub fn edit_and_apply(yaml: &str) -> anyhow::Result<String> {
     // Validate as YAML.
     let _: serde_yaml::Value = serde_yaml::from_str(&new_yaml)?;
 
-    // Apply via kubectl.
+    // Apply via kubectl. We must:
+    // 1. take() stdin and drop it after writing so kubectl sees EOF
+    //    (otherwise wait() hangs forever — kubectl reads stdin until
+    //    EOF, and an un-dropped ChildStdin keeps the pipe open).
+    // 2. capture stdout + stderr so kubectl's output doesn't paint
+    //    over the alt-screen TUI when we return.
     let mut kc = Command::new("kubectl")
         .args(["apply", "-f", "-"])
         .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()?;
-    kc.stdin
-        .as_mut()
-        .expect("piped stdin")
-        .write_all(new_yaml.as_bytes())?;
-    let status = kc.wait()?;
-    if !status.success() {
-        anyhow::bail!("kubectl apply exited with status {status}");
+    {
+        let mut stdin = kc.stdin.take().expect("piped stdin");
+        stdin.write_all(new_yaml.as_bytes())?;
+        // stdin drops here → kubectl sees EOF.
+    }
+    let output = kc.wait_with_output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "kubectl apply exited with status {} — {}",
+            output.status,
+            stderr.lines().next().unwrap_or("(no stderr)")
+        );
     }
 
     Ok(new_yaml)
