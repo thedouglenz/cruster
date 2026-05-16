@@ -1,0 +1,17 @@
+[package]
+name = "cruster-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+cruster-core = { workspace = true }
+cruster-kube = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+k8s-openapi = { workspace = true }
+futures = { workspace = true }

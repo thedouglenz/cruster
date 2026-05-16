@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/cruster-core",
     "crates/cruster-kube",
-    # "crates/cruster-tui",
+    "crates/cruster-tui",
     # "crates/cruster-bin",
 ]
 
