@@ -1,7 +1,7 @@
 use anyhow::Context;
 use cruster_kube::{
-    ConfigMaps, Deployments, Events, Nodes, Pods, ResourceKind, ResourceStore, Secrets, Services,
-    StoreRegistry, run_watcher,
+    ConfigMaps, Deployments, Events, Namespaces, Nodes, Pods, ResourceKind, ResourceStore, Secrets,
+    Services, StoreRegistry, run_watcher,
 };
 use cruster_tui::App;
 use kube::Client;
@@ -25,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
     spawn_watcher::<Events>(client.clone(), registry.events.clone());
     spawn_watcher::<ConfigMaps>(client.clone(), registry.configmaps.clone());
     spawn_watcher::<Secrets>(client.clone(), registry.secrets.clone());
+    spawn_watcher::<Namespaces>(client.clone(), registry.namespaces.clone());
 
     let mut app = App::new(registry);
     app.run().await
