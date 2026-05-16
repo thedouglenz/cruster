@@ -9,6 +9,7 @@ license.workspace = true
 cruster-core = { workspace = true }
 cruster-kube = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 ratatui = { workspace = true }
