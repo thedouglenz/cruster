@@ -6,9 +6,11 @@ pub mod events;
 pub mod export;
 pub mod get;
 pub mod help_json;
+pub mod license;
 pub mod logs;
 pub mod schema;
 pub mod theme;
+pub mod trial;
 
 use crate::args::{Cli, Command};
 
@@ -23,5 +25,7 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Diff(args) => diff::run(&cli, args).await,
         Command::Theme(args) => theme::run(&cli, args).await,
         Command::Export(args) => export::run(&cli, args).await,
+        Command::License(args) => license::run(args).await,
+        Command::Trial => trial::run().await,
     }
 }

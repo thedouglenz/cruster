@@ -61,6 +61,29 @@ pub enum Command {
     Theme(ThemeArgs),
     /// Build a diagnostic markdown bundle for a resource.
     Export(ExportArgs),
+    /// Inspect the currently loaded license.
+    License(LicenseArgs),
+    /// Activate a 14-day Pro trial (no credit card, no email required).
+    Trial,
+}
+
+#[derive(Debug, Parser)]
+pub struct LicenseArgs {
+    #[command(subcommand)]
+    pub sub: LicenseSub,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LicenseSub {
+    /// Print the loaded license: tier, email, expiry. Exits 0 even
+    /// for the "no license, free tier" case.
+    Show,
+    /// Re-verify the license file. Exits non-zero with the reason if
+    /// the file is missing, expired, or has a bad signature.
+    Verify,
+    /// Print the canonical path the binary reads (and where `cruster
+    /// trial` writes), nothing else. Useful for scripting.
+    Path,
 }
 
 #[derive(Debug, Parser)]

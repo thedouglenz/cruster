@@ -114,7 +114,7 @@ impl App {
             read_only,
             pending_open_relationships: false,
             theme: crate::theme::Theme::terminal_default(),
-            tier: Tier::default(),
+            tier: cruster_core::license::load_tier_or_free(),
             keymap: crate::keymap::Keymap::for_preset(
                 crate::keymap::KeymapConfig::load_or_default().preset,
             ),
