@@ -60,6 +60,7 @@ pub struct App {
     port_forwards: PortForwards,
     port_forward_prompt: Option<PortForwardPrompt>,
     overlay: Option<Box<dyn Overlay>>,
+    history: crate::history::History,
     context: String,
     environment: Environment,
     read_only: bool,
@@ -82,11 +83,37 @@ impl App {
             port_forwards: PortForwards::new(),
             port_forward_prompt: None,
             overlay: None,
+            history: {
+                let mut h = crate::history::History::with_capacity(200);
+                h.record("pods", None);
+                h
+            },
             context,
             environment,
             read_only,
             toast: None,
         }
+    }
+
+    fn open_history_palette(&mut self) {
+        let entries: Vec<PaletteEntry> = self
+            .history
+            .ranked()
+            .into_iter()
+            .map(|item| PaletteEntry {
+                id: item.view_id.clone(),
+                label: match &item.key {
+                    Some(k) => format!("{} ({} visits)", k, item.visit_count),
+                    None => format!("View: {} ({} visits)", item.view_id, item.visit_count),
+                },
+                kind: EntryKind::View,
+            })
+            .collect();
+        if entries.is_empty() {
+            self.toast = Some("no history yet".into());
+            return;
+        }
+        self.overlay = Some(Box::new(Palette::new(entries)));
     }
 
     fn open_palette(&mut self) {
@@ -243,6 +270,7 @@ impl App {
                     self.overlay = None;
                     if let Some(v) = Self::view_for_id(&id) {
                         self.current_view = v;
+                        self.history.record(&id, None);
                     } else {
                         self.toast = Some(format!("no view for id: {id}"));
                     }
@@ -295,7 +323,10 @@ impl App {
             match self.command.handle_key(key) {
                 CommandAction::None | CommandAction::Cancel => {}
                 CommandAction::SwitchTo(id) => match Self::view_for_id(&id) {
-                    Some(v) => self.current_view = v,
+                    Some(v) => {
+                        self.current_view = v;
+                        self.history.record(&id, None);
+                    }
                     None => self.toast = Some(format!("no view for id: {id}")),
                 },
                 CommandAction::UnknownAlias(alias) => {
@@ -337,6 +368,10 @@ impl App {
             }
             KeyCode::Char('K') => {
                 self.copy_kubectl_for_selection();
+                LoopState::Continue
+            }
+            KeyCode::Char('H') => {
+                self.open_history_palette();
                 LoopState::Continue
             }
             _ => self.current_view.handle_key(key),
