@@ -4,7 +4,7 @@ members = [
     "crates/cruster-core",
     "crates/cruster-kube",
     "crates/cruster-tui",
-    # "crates/cruster-bin",
+    "crates/cruster-bin",
 ]
 
 [workspace.package]
