@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod context;
 pub mod diff;
+pub mod license;
 pub mod tier;
 
 /// Uniquely identifies a Kubernetes resource within a cluster.
