@@ -1,5 +1,5 @@
 use anyhow::Context;
-use cruster_kube::{ResourceStore, run_pod_watcher};
+use cruster_kube::{run_pod_watcher, ResourceStore};
 use cruster_tui::App;
 use k8s_openapi::api::core::v1::Pod;
 use kube::Client;

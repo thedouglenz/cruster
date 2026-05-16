@@ -2,10 +2,10 @@
 
 use cruster_core::ResourceKey;
 use k8s_openapi::api::core::v1::Pod;
-use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::Frame;
 
 #[derive(Debug, Default)]
 pub struct PodsView {

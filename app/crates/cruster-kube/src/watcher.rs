@@ -104,7 +104,9 @@ mod tests {
         let store = ResourceStore::<Pod>::new();
         let pod = make_pod("default", "nginx");
 
-        apply_event(&store, Event::Apply(pod.clone())).await.unwrap();
+        apply_event(&store, Event::Apply(pod.clone()))
+            .await
+            .unwrap();
         apply_event(&store, Event::Delete(pod)).await.unwrap();
 
         assert!(store.is_empty().await);

@@ -5,7 +5,7 @@
 //! latency are deliberately excluded; they belong in an integration
 //! benchmark, not a CI-runnable micro-bench.
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use cruster_kube::ResourceStore;
 use cruster_tui::App;
 use k8s_openapi::api::core::v1::Pod;

@@ -6,12 +6,12 @@ use std::time::Duration;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use cruster_kube::ResourceStore;
 use k8s_openapi::api::core::v1::Pod;
-use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 
 use crate::views::pods::PodsView;
 
