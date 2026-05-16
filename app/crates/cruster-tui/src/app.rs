@@ -156,7 +156,35 @@ impl App {
                 self.start_port_forward_prompt();
                 LoopState::Continue
             }
+            KeyCode::Char('e') => {
+                self.edit_selection_yaml();
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
+        }
+    }
+
+    fn edit_selection_yaml(&mut self) {
+        // Refuse to edit Secrets — the selected_yaml() for SecretsView
+        // returns redacted YAML, and applying that would clobber the
+        // real values. For v1, point users to kubectl.
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        if key.kind == "Secret" {
+            self.toast = Some(
+                "editing Secrets via cruster is disabled in v1 — use kubectl edit secret ...".into(),
+            );
+            return;
+        }
+        let Some((_, yaml)) = self.current_view.selected_yaml() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        match crate::actions::yaml_edit::edit_and_apply(&yaml) {
+            Ok(_) => self.toast = Some("applied".into()),
+            Err(e) => self.toast = Some(format!("edit failed: {e}")),
         }
     }
 
