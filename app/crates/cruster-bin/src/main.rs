@@ -11,13 +11,32 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> anyhow::Result<()> {
     init_tracing();
 
+    let mut argv = std::env::args_os();
+    let argv0 = argv.next();
+    let first_arg = argv.next();
+
+    // CLI mode: any argument other than nothing or `tui` dispatches to
+    // the CLI. Subcommand parsing happens inside cruster-cli.
+    let go_cli = match first_arg.as_deref().and_then(|s| s.to_str()) {
+        None => false,        // no args → TUI
+        Some("tui") => false, // explicit TUI
+        _ => true,
+    };
+
+    if go_cli {
+        let mut full = vec![argv0.unwrap_or_default()];
+        full.push(first_arg.unwrap());
+        full.extend(argv);
+        let code = cruster_cli::run(full).await;
+        std::process::exit(code);
+    }
+
     let client = Client::try_default()
         .await
         .context("failed to construct kube client from default kubeconfig context")?;
 
     let registry = StoreRegistry::new();
 
-    // Spawn one watcher per kind. (More kinds wired up in subsequent tasks.)
     spawn_watcher::<Pods>(client.clone(), registry.pods.clone());
     spawn_watcher::<Deployments>(client.clone(), registry.deployments.clone());
     spawn_watcher::<Services>(client.clone(), registry.services.clone());

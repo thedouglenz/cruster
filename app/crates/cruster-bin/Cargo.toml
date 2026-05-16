@@ -18,6 +18,7 @@ path = "../../benches/startup.rs"
 cruster-core = { workspace = true }
 cruster-kube = { workspace = true }
 cruster-tui = { workspace = true }
+cruster-cli = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
