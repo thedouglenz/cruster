@@ -48,7 +48,6 @@ pub struct App {
     registry: StoreRegistry,
     client: Option<Client>,
     current_view: Box<dyn ResourceView>,
-    #[allow(dead_code)] // wired into footer in Task 4 of this phase
     actions: crate::action::ActionRegistry,
     command: CommandLine,
     describe_pane: DescribePane,
@@ -320,7 +319,43 @@ impl App {
         } else {
             self.current_view.render(frame);
         }
+        self.render_action_footer(frame);
         self.render_overlay(frame);
+    }
+
+    fn render_action_footer(&self, frame: &mut Frame<'_>) {
+        let area = frame.area();
+        if area.height < 2 {
+            return;
+        }
+        let hints: Vec<String> = self
+            .actions
+            .applicable(self.current_view.as_ref())
+            .map(|a| format_action_hint(a.key(), a.label()))
+            .collect();
+        if hints.is_empty() {
+            return;
+        }
+        let mut line = String::new();
+        for p in hints {
+            let sep = if line.is_empty() { "" } else { "  " };
+            if line.len() + sep.len() + p.len() > area.width as usize {
+                if line.len() < area.width as usize {
+                    line.push('…');
+                }
+                break;
+            }
+            line.push_str(sep);
+            line.push_str(&p);
+        }
+        let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+        let rect = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(2),
+            width: area.width,
+            height: 1,
+        };
+        frame.render_widget(bar, rect);
     }
 
     fn render_overlay(&self, frame: &mut Frame<'_>) {
@@ -331,6 +366,8 @@ impl App {
             width: area.width,
             height: 1,
         };
+        // Suppress drawing if no overlay is active — the action footer
+        // is above and is always visible.
         if let Some(prompt) = &self.port_forward_prompt {
             let line = format!(
                 "port-forward pod/{}: {}_ (esc cancels)",
@@ -351,6 +388,18 @@ impl App {
             frame.render_widget(bar, bottom);
         }
     }
+}
+
+fn format_action_hint(key: KeyCode, label: &str) -> String {
+    let k = match key {
+        KeyCode::Char(c) => c.to_string(),
+        KeyCode::Esc => "esc".into(),
+        KeyCode::Enter => "enter".into(),
+        KeyCode::Up => "↑".into(),
+        KeyCode::Down => "↓".into(),
+        other => format!("{other:?}"),
+    };
+    format!("[{k}] {label}")
 }
 
 fn init_terminal() -> anyhow::Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -478,5 +527,26 @@ mod tests {
         let _ = a.handle_key(press(KeyCode::Char('l')));
         assert!(!a.logs_pane.is_open());
         assert!(a.toast.is_some());
+    }
+
+    #[test]
+    fn footer_renders_applicable_actions() {
+        let a = app();
+        // No pods → only actions that don't require a selection apply.
+        let labels: Vec<&'static str> = a
+            .actions
+            .applicable(a.current_view.as_ref())
+            .map(|act| act.label())
+            .collect();
+        assert!(labels.contains(&"Switch kind"));
+        assert!(labels.contains(&"Quit"));
+        // Describe needs a selection; with an empty store, it shouldn't apply.
+        assert!(!labels.contains(&"Describe"));
+    }
+
+    #[test]
+    fn format_hint_renders_char_and_label() {
+        assert_eq!(format_action_hint(KeyCode::Char('d'), "Describe"), "[d] Describe");
+        assert_eq!(format_action_hint(KeyCode::Esc, "Cancel"), "[esc] Cancel");
     }
 }
