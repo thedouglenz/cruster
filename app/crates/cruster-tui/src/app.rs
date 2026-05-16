@@ -48,6 +48,8 @@ pub struct App {
     registry: StoreRegistry,
     client: Option<Client>,
     current_view: Box<dyn ResourceView>,
+    #[allow(dead_code)] // wired into footer in Task 4 of this phase
+    actions: crate::action::ActionRegistry,
     command: CommandLine,
     describe_pane: DescribePane,
     logs_pane: LogsPane,
@@ -62,6 +64,7 @@ impl App {
             registry,
             client,
             current_view: Box::new(PodsView::new()),
+            actions: crate::action_shipped::default_registry(),
             command: CommandLine::new(),
             describe_pane: DescribePane::new(),
             logs_pane: LogsPane::new(),
