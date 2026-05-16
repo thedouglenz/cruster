@@ -3,6 +3,7 @@
 pub mod describe;
 pub mod diff;
 pub mod events;
+pub mod export;
 pub mod get;
 pub mod help_json;
 pub mod logs;
@@ -21,5 +22,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::HelpJson => help_json::run().await,
         Command::Diff(args) => diff::run(&cli, args).await,
         Command::Theme(args) => theme::run(&cli, args).await,
+        Command::Export(args) => export::run(&cli, args).await,
     }
 }

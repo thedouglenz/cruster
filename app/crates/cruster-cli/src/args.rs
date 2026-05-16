@@ -59,6 +59,22 @@ pub enum Command {
     Diff(DiffArgs),
     /// Theme inspection and (Phase 5) installation.
     Theme(ThemeArgs),
+    /// Build a diagnostic markdown bundle for a resource.
+    Export(ExportArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct ExportArgs {
+    /// Resource reference: `kind/name`, e.g. `pod/nginx`.
+    pub reference: String,
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
+    /// Write the markdown to this file instead of stdout.
+    #[arg(long, short = 'o')]
+    pub output: Option<String>,
+    /// Tail this many log lines (Pod resources only). Default 100.
+    #[arg(long, default_value = "100")]
+    pub tail: i64,
 }
 
 #[derive(Debug, Parser)]
