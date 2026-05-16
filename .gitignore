@@ -1,0 +1,18 @@
+# Rust
+/app/target
+/app/**/*.rs.bk
+/app/Cargo.lock.bak
+
+# Web (future)
+/web/node_modules
+/web/.next
+/web/.astro
+/web/dist
+/web/build
+
+# General
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
