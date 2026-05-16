@@ -11,24 +11,14 @@ This repository is a monorepo:
 
 ## Status
 
-Phase 2B (LLM-efficient CLI) complete. The same `cruster` binary
-launches the TUI when invoked with no args, and runs as a one-shot
-CLI when invoked with a verb. CLI surface:
+Phase 3A (immediate ergonomics) complete: command palette (`Ctrl+P`),
+faceted search (`/` with `ns:`/`status:`/`~contains`/fuzzy tokens),
+inline action footer, safety badges + env-driven read-only mode
+(`Ctrl+R` to toggle), `K` to copy describe as kubectl, `H` for ranked
+recents. Plus the full Phase 2A TUI and Phase 2B CLI.
 
-- `cruster get <kind> [name]` — list resources of all 8 supported kinds
-- `cruster describe <kind>/<name>` — full pruned object for one resource
-- `cruster logs <pod> [--follow] [--tail] [--since] [--grep]`
-- `cruster events [--resource <kind/name>] [--limit N]`
-- `cruster schema <verb>` — JSON schema of a verb's structured output
-- `cruster help-json` — machine-readable command tree for agent discovery
-
-Output auto-detects: text in a TTY, NDJSON when piped (or with `--llm`).
-`--format text|json|ndjson|yaml` forces a specific format. `--full`
-disables agent-friendly field pruning. `--budget N` caps NDJSON output
-at ≈N tokens with a `{"truncated": true, "remaining": M}` marker.
-Secrets are always redacted (`<redacted>`), even with `--full`.
-
-Next: Phase 3 (incident-solving ergonomics + themes).
+Next: Phase 3B (relationship-first navigation + diff verb + saved
+investigative workflows).
 
 ## Quick start
 
@@ -37,7 +27,7 @@ TUI:
 cd app && cargo run --release -p cruster-bin
 ```
 
-CLI (a few examples):
+CLI:
 ```sh
 cd app
 cargo build --release -p cruster-bin
@@ -50,8 +40,7 @@ cargo build --release -p cruster-bin
 ./target/release/cruster help-json | jq '.[].name'
 ```
 
-Uses your active kubeconfig context. See `app/README.md` for the full
-TUI keymap.
+See `app/README.md` for the full TUI keymap.
 
 ## Project layout
 
@@ -59,9 +48,9 @@ TUI keymap.
 cruster/
 ├── app/
 │   ├── crates/
-│   │   ├── cruster-core/   # shared types
+│   │   ├── cruster-core/   # shared types (ResourceKey, Environment)
 │   │   ├── cruster-kube/   # kube-rs wrapper, watch streams, ResourceKind, StoreRegistry
-│   │   ├── cruster-tui/    # ratatui app, ResourceView trait, kind views, action panes
+│   │   ├── cruster-tui/    # ratatui app, ResourceView trait, views, actions, overlays, safety
 │   │   ├── cruster-cli/    # clap CLI, Formatter, prune, budget, per-verb modules + schemas
 │   │   └── cruster-bin/    # single `cruster` binary; dispatches TUI vs CLI
 │   └── benches/
