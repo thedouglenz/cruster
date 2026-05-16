@@ -51,12 +51,6 @@ pub enum PaneFocus {
     Logs,
 }
 
-/// Active prompt for a port-forward mapping ("local:remote").
-struct PortForwardPrompt {
-    pod_key: ResourceKey,
-    buffer: String,
-}
-
 pub struct App {
     registry: StoreRegistry,
     client: Option<Client>,
@@ -66,7 +60,6 @@ pub struct App {
     describe_pane: DescribePane,
     logs_pane: LogsPane,
     port_forwards: PortForwards,
-    port_forward_prompt: Option<PortForwardPrompt>,
     overlay: Option<Box<dyn Overlay>>,
     history: crate::history::History,
     loaded_workflows: Vec<crate::workflows::Workflow>,
@@ -96,7 +89,6 @@ impl App {
             describe_pane: DescribePane::new(),
             logs_pane: LogsPane::new(),
             port_forwards: PortForwards::new(),
-            port_forward_prompt: None,
             overlay: None,
             history: {
                 let mut h = crate::history::History::with_capacity(200);
@@ -503,6 +495,18 @@ impl App {
                     self.overlay = None;
                 }
                 OverlayResult::Invoke(id) => {
+                    if id == "port-forward-submit" {
+                        // Pull the overlay's payload before dropping it.
+                        let payload = self
+                            .overlay
+                            .as_ref()
+                            .and_then(|o| o.port_forward_payload());
+                        self.overlay = None;
+                        if let Some((pod_key, mapping)) = payload {
+                            self.submit_port_forward(pod_key, mapping);
+                        }
+                        return LoopState::Continue;
+                    }
                     self.overlay = None;
                     return self.invoke_action(&id);
                 }
@@ -547,11 +551,6 @@ impl App {
                 return LoopState::Continue;
             }
             _ => {}
-        }
-
-        if self.port_forward_prompt.is_some() {
-            self.handle_port_forward_prompt_key(key);
-            return LoopState::Continue;
         }
 
         if self.command.is_active() {
@@ -626,42 +625,23 @@ impl App {
             ));
             return;
         }
-        self.port_forward_prompt = Some(PortForwardPrompt {
-            pod_key: key,
-            buffer: String::new(),
-        });
+        self.overlay = Some(Box::new(
+            crate::overlays::port_forward::PortForwardOverlay::new(key),
+        ));
     }
 
-    fn handle_port_forward_prompt_key(&mut self, key: KeyEvent) {
-        let Some(prompt) = self.port_forward_prompt.as_mut() else {
-            return;
-        };
-        match key.code {
-            KeyCode::Esc => {
-                self.port_forward_prompt = None;
+    fn submit_port_forward(&mut self, pod_key: ResourceKey, mapping: String) {
+        match PortForward::start(pod_key.clone(), mapping.clone()) {
+            Ok(pf) => {
+                self.toast = Some(format!(
+                    "forwarded {} → pod/{}",
+                    pf.mapping, pod_key.name
+                ));
+                self.port_forwards.add(pf);
             }
-            KeyCode::Enter => {
-                let prompt = self.port_forward_prompt.take().unwrap();
-                match PortForward::start(prompt.pod_key.clone(), prompt.buffer.clone()) {
-                    Ok(pf) => {
-                        self.toast = Some(format!(
-                            "forwarded {} → pod/{}:{}",
-                            pf.mapping, prompt.pod_key.name, pf.mapping
-                        ));
-                        self.port_forwards.add(pf);
-                    }
-                    Err(e) => {
-                        self.toast = Some(format!("port-forward failed: {e}"));
-                    }
-                }
+            Err(e) => {
+                self.toast = Some(format!("port-forward failed: {e}"));
             }
-            KeyCode::Backspace => {
-                prompt.buffer.pop();
-            }
-            KeyCode::Char(c) => {
-                prompt.buffer.push(c);
-            }
-            _ => {}
         }
     }
 
@@ -852,16 +832,10 @@ impl App {
             height: 1,
         };
         // Suppress drawing if no overlay is active — the action footer
-        // is above and is always visible.
-        if let Some(prompt) = &self.port_forward_prompt {
-            let line = format!(
-                "port-forward pod/{}: {}_ (esc cancels)",
-                prompt.pod_key.name, prompt.buffer
-            );
-            let bar =
-                Paragraph::new(line).style(Style::default().bg(self.theme.command_bg.as_ratatui()));
-            frame.render_widget(bar, bottom);
-        } else if self.command.is_active() {
+        // is above and is always visible. The port-forward prompt is
+        // now a modal overlay (rendered separately by the overlay
+        // drawing pass).
+        if self.command.is_active() {
             let line = format!(":{}", self.command.buffer());
             let bar =
                 Paragraph::new(line).style(Style::default().bg(self.theme.command_bg.as_ratatui()));

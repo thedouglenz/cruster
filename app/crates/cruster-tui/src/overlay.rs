@@ -28,4 +28,10 @@ pub trait Overlay: Send {
     fn live_filter_buffer(&self) -> Option<&str> {
         None
     }
+
+    /// If this overlay is the port-forward modal, return its target
+    /// pod key + current mapping buffer. Default `None`.
+    fn port_forward_payload(&self) -> Option<(cruster_core::ResourceKey, String)> {
+        None
+    }
 }
