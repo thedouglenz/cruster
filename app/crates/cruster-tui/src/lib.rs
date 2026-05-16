@@ -10,6 +10,7 @@ pub mod kubectl;
 pub mod overlay;
 pub mod overlays;
 pub mod safety;
+pub mod theme;
 pub mod view;
 pub mod views;
 pub mod workflows;

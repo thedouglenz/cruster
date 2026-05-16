@@ -1,0 +1,13 @@
+name = "Dark"
+footer_bg = "darkgray"
+command_bg = "darkgray"
+search_bg = "blue"
+toast_bg = "red"
+selected_bg = "#444444"
+
+[env_band]
+prod = "#cc0000"
+staging = "#ccaa00"
+dev = "#00aa00"
+local = "#00aaaa"
+unknown = "#666666"

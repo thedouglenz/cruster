@@ -1,0 +1,13 @@
+name = "Gruvbox"
+footer_bg = "#3c3836"
+command_bg = "#3c3836"
+search_bg = "#458588"
+toast_bg = "#cc241d"
+selected_bg = "#504945"
+
+[env_band]
+prod = "#cc241d"
+staging = "#d79921"
+dev = "#98971a"
+local = "#689d6a"
+unknown = "#7c6f64"

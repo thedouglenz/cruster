@@ -1,0 +1,13 @@
+name = "Solarized Dark"
+footer_bg = "#073642"
+command_bg = "#073642"
+search_bg = "#268bd2"
+toast_bg = "#dc322f"
+selected_bg = "#586e75"
+
+[env_band]
+prod = "#dc322f"
+staging = "#b58900"
+dev = "#859900"
+local = "#2aa198"
+unknown = "#586e75"

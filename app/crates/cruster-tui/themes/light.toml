@@ -1,0 +1,13 @@
+name = "Light"
+footer_bg = "white"
+command_bg = "white"
+search_bg = "lightblue"
+toast_bg = "lightred"
+selected_bg = "#dddddd"
+
+[env_band]
+prod = "#aa0000"
+staging = "#aa7700"
+dev = "#007700"
+local = "#007777"
+unknown = "#888888"

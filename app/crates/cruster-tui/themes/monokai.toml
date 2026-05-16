@@ -1,0 +1,13 @@
+name = "Monokai"
+footer_bg = "#272822"
+command_bg = "#272822"
+search_bg = "#66d9ef"
+toast_bg = "#f92672"
+selected_bg = "#49483e"
+
+[env_band]
+prod = "#f92672"
+staging = "#fd971f"
+dev = "#a6e22e"
+local = "#66d9ef"
+unknown = "#75715e"

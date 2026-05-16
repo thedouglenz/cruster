@@ -1,0 +1,13 @@
+name = "Terminal (default)"
+footer_bg = "reset"
+command_bg = "reset"
+search_bg = "reset"
+toast_bg = "reset"
+selected_bg = "reset"
+
+[env_band]
+prod = "reset"
+staging = "reset"
+dev = "reset"
+local = "reset"
+unknown = "reset"

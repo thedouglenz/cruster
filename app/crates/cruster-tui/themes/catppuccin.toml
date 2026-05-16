@@ -1,0 +1,13 @@
+name = "Catppuccin Mocha"
+footer_bg = "#181825"
+command_bg = "#1e1e2e"
+search_bg = "#89b4fa"
+toast_bg = "#f38ba8"
+selected_bg = "#45475a"
+
+[env_band]
+prod = "#f38ba8"
+staging = "#fab387"
+dev = "#a6e3a1"
+local = "#89dceb"
+unknown = "#7f849c"

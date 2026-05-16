@@ -1,0 +1,13 @@
+name = "Tokyo Night"
+footer_bg = "#1a1b26"
+command_bg = "#24283b"
+search_bg = "#7aa2f7"
+toast_bg = "#f7768e"
+selected_bg = "#414868"
+
+[env_band]
+prod = "#f7768e"
+staging = "#e0af68"
+dev = "#9ece6a"
+local = "#7dcfff"
+unknown = "#565f89"
