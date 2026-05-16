@@ -75,7 +75,10 @@ impl Keymap {
         m.insert((KeyCode::Char('H'), none), SemanticAction::OpenHistory);
         m.insert((KeyCode::Char('W'), none), SemanticAction::OpenWorkflows);
         m.insert((KeyCode::Char('T'), none), SemanticAction::OpenThemes);
-        m.insert((KeyCode::Char('r'), none), SemanticAction::OpenRelationships);
+        m.insert(
+            (KeyCode::Char('r'), none),
+            SemanticAction::OpenRelationships,
+        );
         m.insert((KeyCode::Char('d'), none), SemanticAction::Describe);
         m.insert((KeyCode::Char('y'), none), SemanticAction::Describe);
         m.insert((KeyCode::Char('l'), none), SemanticAction::Logs);
