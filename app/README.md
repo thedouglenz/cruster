@@ -38,6 +38,8 @@ cargo test --workspace
 | `Ctrl+P` | command palette (fuzzy match over all actions + all kinds) |
 | `/` | search / filter (token syntax: `ns:prod status:Running ~name`) |
 | `H` | recents palette (recency × frequency ranked) |
+| `r` | relationships (jump to related resource — owner, mounted cm/secret, service, node) |
+| `W` | run a saved workflow from `~/.config/cruster/workflows/*.toml` |
 
 ### Switching kinds
 Type `:` to enter command mode, then a kind alias and `Enter`.

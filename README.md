@@ -11,14 +11,19 @@ This repository is a monorepo:
 
 ## Status
 
-Phase 3A (immediate ergonomics) complete: command palette (`Ctrl+P`),
-faceted search (`/` with `ns:`/`status:`/`~contains`/fuzzy tokens),
-inline action footer, safety badges + env-driven read-only mode
-(`Ctrl+R` to toggle), `K` to copy describe as kubectl, `H` for ranked
-recents. Plus the full Phase 2A TUI and Phase 2B CLI.
+Phase 3B (task-first navigation) complete: relationship resolver
+(Pod → owner / mounted cm + secret / services that select / node;
+Service → selected pods; Deployment → owned pods; Node → scheduled
+pods), `r` opens a relationships overlay; `cruster diff <a> <b>` does
+structural diff over two resources; saved investigative workflows
+(TOML files in `~/.config/cruster/workflows/`) run via `W` and chain
+view switches + filter applications.
 
-Next: Phase 3B (relationship-first navigation + diff verb + saved
-investigative workflows).
+Plus everything from earlier phases: Phase 2A TUI parity, Phase 2B
+LLM-efficient CLI, Phase 3A ergonomics (palette, search, safety,
+copy-as-kubectl, history).
+
+Next: Phase 3C (theme engine + bundled themes — paid feature gate).
 
 ## Quick start
 
