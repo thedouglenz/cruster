@@ -18,6 +18,7 @@ pub async fn run(cli: &Cli, args: &EventsArgs) -> anyhow::Result<()> {
         None => Api::all(client),
     };
     let mut events = api.list(&Default::default()).await?.items;
+    let total_before_filter = events.len();
 
     if let Some(resource) = &args.resource {
         let (kind, name) = crate::verbs::describe::parse_reference(resource)?;
@@ -42,9 +43,38 @@ pub async fn run(cli: &Cli, args: &EventsArgs) -> anyhow::Result<()> {
         prune(r, cli.full);
     }
 
+    // If a filter ate all the events, give the caller (agent or human)
+    // a clear signal that the filter is the reason — not "no events
+    // exist". Without this, an empty NDJSON stream is ambiguous and
+    // led an agent to second-guess whether `--resource` was supported.
+    let filter_dropped_all = args.resource.is_some()
+        && records.is_empty()
+        && total_before_filter > 0;
+    if filter_dropped_all {
+        let marker = serde_json::json!({
+            "matched": 0,
+            "filtered_from": total_before_filter,
+            "note": format!(
+                "no events matched --resource {}; {} event(s) exist in scope",
+                args.resource.as_deref().unwrap_or(""),
+                total_before_filter,
+            ),
+        });
+        records.push(marker);
+    }
+
     let format = effective_format(cli.format, cli.llm, stdout_is_tty());
     let mut stdout = std::io::stdout().lock();
     write_records(&mut stdout, format, &records, |w, _vs| {
+        if filter_dropped_all {
+            writeln!(
+                w,
+                "no events matched --resource {} ({} event(s) exist in scope)",
+                args.resource.as_deref().unwrap_or(""),
+                total_before_filter,
+            )?;
+            return Ok(());
+        }
         writeln!(w, "NAMESPACE\tLAST_SEEN\tTYPE\tREASON\tOBJECT\tMESSAGE")?;
         for e in &events {
             let ns = e.metadata.namespace.as_deref().unwrap_or("-");

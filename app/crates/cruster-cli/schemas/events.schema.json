@@ -2,7 +2,10 @@
   "$schema": "https://json-schema.org/draft-07/schema",
   "$id": "https://cruster.dev/schemas/events/v1.json",
   "title": "cruster events (NDJSON record)",
-  "description": "One record per event. Schema matches get-event.",
+  "description": "One record per event. Schema matches get-event. When `--resource` is used and the filter eliminates all events, a single sentinel record `{\"matched\": 0, \"filtered_from\": N, \"note\": ...}` is emitted instead. Detect sentinels by the absence of `metadata` (events have `metadata`; sentinels do not).",
   "type": "object",
-  "required": ["metadata"]
+  "oneOf": [
+    { "required": ["metadata"] },
+    { "required": ["matched", "filtered_from"] }
+  ]
 }
