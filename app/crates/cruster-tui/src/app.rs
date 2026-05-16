@@ -303,8 +303,9 @@ impl App {
         // Ctrl+R toggles read-only (forbidden in Prod).
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
             if self.environment == Environment::Prod {
-                self.toast =
-                    Some("read-only is forced for prod contexts; restart with --rw to override".into());
+                self.toast = Some(
+                    "read-only is forced for prod contexts; restart with --rw to override".into(),
+                );
             } else {
                 self.read_only = !self.read_only;
                 let state = if self.read_only { "ON" } else { "OFF" };
@@ -380,9 +381,7 @@ impl App {
 
     fn edit_selection_yaml(&mut self) {
         if self.read_only {
-            self.toast = Some(
-                "read-only mode: edit disabled (Ctrl+R to toggle)".into(),
-            );
+            self.toast = Some("read-only mode: edit disabled (Ctrl+R to toggle)".into());
             return;
         }
         // Refuse to edit Secrets — the selected_yaml() for SecretsView
@@ -411,9 +410,7 @@ impl App {
 
     fn start_port_forward_prompt(&mut self) {
         if self.read_only {
-            self.toast = Some(
-                "read-only mode: port-forward disabled (Ctrl+R to toggle)".into(),
-            );
+            self.toast = Some("read-only mode: port-forward disabled (Ctrl+R to toggle)".into());
             return;
         }
         let Some(key) = self.current_view.selected_key() else {
@@ -554,10 +551,7 @@ impl App {
     fn render_safety_badge(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
         let mode = if self.read_only { "ro" } else { "rw" };
-        let label = format!(
-            " [{}] {} {} ",
-            self.context, self.environment, mode
-        );
+        let label = format!(" [{}] {} {} ", self.context, self.environment, mode);
         let color = match self.environment {
             Environment::Prod => Color::Red,
             Environment::Staging => Color::Yellow,
@@ -807,7 +801,10 @@ mod tests {
 
     #[test]
     fn format_hint_renders_char_and_label() {
-        assert_eq!(format_action_hint(KeyCode::Char('d'), "Describe"), "[d] Describe");
+        assert_eq!(
+            format_action_hint(KeyCode::Char('d'), "Describe"),
+            "[d] Describe"
+        );
         assert_eq!(format_action_hint(KeyCode::Esc, "Cancel"), "[esc] Cancel");
     }
 }

@@ -3,10 +3,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Matcher, Utf32Str};
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
 
@@ -137,10 +137,7 @@ impl Overlay for Palette {
             .entries
             .iter()
             .filter(|e| {
-                self.query.is_empty()
-                    || e.label
-                        .to_lowercase()
-                        .contains(&self.query.to_lowercase())
+                self.query.is_empty() || e.label.to_lowercase().contains(&self.query.to_lowercase())
             })
             .collect();
         let items: Vec<ListItem> = visible

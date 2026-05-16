@@ -35,7 +35,8 @@ impl ResourceView for NodesView {
 
     async fn refresh(&mut self, registry: &StoreRegistry) {
         let snap = registry.nodes.snapshot().await;
-        self.snapshot = crate::overlays::search::apply(&self.filter, snap, |n| Some(node_status(n)));
+        self.snapshot =
+            crate::overlays::search::apply(&self.filter, snap, |n| Some(node_status(n)));
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
         }

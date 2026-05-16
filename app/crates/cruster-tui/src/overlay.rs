@@ -2,8 +2,8 @@
 //! key events route to them until they close.
 
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::Frame;
 
 /// What the App should do after an overlay key event.
 #[derive(Debug, Clone, PartialEq, Eq)]

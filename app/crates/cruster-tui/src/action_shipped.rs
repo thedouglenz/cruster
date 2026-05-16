@@ -78,7 +78,10 @@ impl Action for Exec {
             return None;
         }
         let ns = key.namespace?;
-        Some(format!("kubectl exec -it {} -n {} -- /bin/sh", key.name, ns))
+        Some(format!(
+            "kubectl exec -it {} -n {} -- /bin/sh",
+            key.name, ns
+        ))
     }
 }
 
@@ -250,10 +253,7 @@ mod tests {
             }
             async fn refresh(&mut self, _r: &cruster_kube::StoreRegistry) {}
             fn render(&self, _f: &mut ratatui::Frame<'_>) {}
-            fn handle_key(
-                &mut self,
-                _k: crossterm::event::KeyEvent,
-            ) -> crate::app::LoopState {
+            fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> crate::app::LoopState {
                 crate::app::LoopState::Continue
             }
             fn selected_key(&self) -> Option<ResourceKey> {

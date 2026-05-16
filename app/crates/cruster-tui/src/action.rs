@@ -72,7 +72,10 @@ impl ActionRegistry {
 
     /// Look up an action by id.
     pub fn by_id(&self, id: &str) -> Option<&dyn Action> {
-        self.actions.iter().find(|a| a.id() == id).map(|a| a.as_ref())
+        self.actions
+            .iter()
+            .find(|a| a.id() == id)
+            .map(|a| a.as_ref())
     }
 
     /// Look up an action by key. Returns the first match.
@@ -101,10 +104,7 @@ mod tests {
         }
         async fn refresh(&mut self, _registry: &StoreRegistry) {}
         fn render(&self, _frame: &mut Frame<'_>) {}
-        fn handle_key(
-            &mut self,
-            _key: crossterm::event::KeyEvent,
-        ) -> crate::app::LoopState {
+        fn handle_key(&mut self, _key: crossterm::event::KeyEvent) -> crate::app::LoopState {
             crate::app::LoopState::Continue
         }
         fn selected_key(&self) -> Option<ResourceKey> {

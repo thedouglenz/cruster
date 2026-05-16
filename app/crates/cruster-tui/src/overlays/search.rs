@@ -1,10 +1,10 @@
 //! Faceted search filter.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
 
@@ -53,7 +53,10 @@ impl Filter {
         for tok in &self.tokens {
             match tok {
                 FilterToken::Namespace(ns) => {
-                    if !namespace.map(|n| n.starts_with(ns.as_str())).unwrap_or(false) {
+                    if !namespace
+                        .map(|n| n.starts_with(ns.as_str()))
+                        .unwrap_or(false)
+                    {
                         return false;
                     }
                 }
