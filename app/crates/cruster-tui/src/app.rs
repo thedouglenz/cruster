@@ -3,7 +3,7 @@
 use std::io;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -21,6 +21,8 @@ use crate::actions::describe::DescribePane;
 use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
+use crate::overlay::{Overlay, OverlayResult};
+use crate::overlays::palette::{EntryKind, Palette, PaletteEntry};
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
 use crate::views::deployments::DeploymentsView;
@@ -54,6 +56,7 @@ pub struct App {
     logs_pane: LogsPane,
     port_forwards: PortForwards,
     port_forward_prompt: Option<PortForwardPrompt>,
+    overlay: Option<Box<dyn Overlay>>,
     toast: Option<String>,
 }
 
@@ -69,7 +72,95 @@ impl App {
             logs_pane: LogsPane::new(),
             port_forwards: PortForwards::new(),
             port_forward_prompt: None,
+            overlay: None,
             toast: None,
+        }
+    }
+
+    fn open_palette(&mut self) {
+        let mut entries: Vec<PaletteEntry> = self
+            .actions
+            .all()
+            .iter()
+            .map(|a| PaletteEntry {
+                id: a.id().to_string(),
+                label: a.label().to_string(),
+                kind: EntryKind::Action,
+            })
+            .collect();
+        for view_id in [
+            "pods",
+            "deployments",
+            "services",
+            "nodes",
+            "events",
+            "configmaps",
+            "secrets",
+            "namespaces",
+        ] {
+            entries.push(PaletteEntry {
+                id: view_id.to_string(),
+                label: format!("View: {}", view_id),
+                kind: EntryKind::View,
+            });
+        }
+        self.overlay = Some(Box::new(Palette::new(entries)));
+    }
+
+    /// Dispatch an action by id. Mirrors the per-key handlers; invoked
+    /// either via the keyboard shortcut or via the command palette.
+    fn invoke_action(&mut self, id: &str) -> LoopState {
+        match id {
+            "describe" => {
+                if let Some((title, yaml)) = self.current_view.selected_yaml() {
+                    self.describe_pane.open(title, yaml);
+                } else {
+                    self.toast = Some("nothing selected".into());
+                }
+                LoopState::Continue
+            }
+            "logs" => {
+                self.open_logs_for_selection();
+                LoopState::Continue
+            }
+            "exec" => {
+                self.exec_into_selection();
+                LoopState::Continue
+            }
+            "port-forward" => {
+                self.start_port_forward_prompt();
+                LoopState::Continue
+            }
+            "edit" => {
+                self.edit_selection_yaml();
+                LoopState::Continue
+            }
+            "switch-kind" => {
+                self.command.activate();
+                LoopState::Continue
+            }
+            "quit" => LoopState::Quit,
+            "copy-kubectl" => {
+                self.copy_kubectl_for_selection();
+                LoopState::Continue
+            }
+            other => {
+                self.toast = Some(format!("no handler for action: {other}"));
+                LoopState::Continue
+            }
+        }
+    }
+
+    fn copy_kubectl_for_selection(&mut self) {
+        let Some(describe) = self.actions.by_id("describe") else {
+            return;
+        };
+        match describe.kubectl_equivalent(self.current_view.as_ref()) {
+            Some(_cmd) => {
+                // Clipboard wiring lands in Task 8.
+                self.toast = Some("copy-kubectl not yet wired (Task 8)".into());
+            }
+            None => self.toast = Some("no kubectl equivalent for selection".into()),
         }
     }
 
@@ -103,6 +194,34 @@ impl App {
         // Clear toast on any keystroke.
         self.toast = None;
 
+        // Overlay (palette/search) swallows keys.
+        if self.overlay.is_some() {
+            let result = self
+                .overlay
+                .as_mut()
+                .map(|o| o.handle_key(key))
+                .unwrap_or(OverlayResult::KeepOpen);
+            match result {
+                OverlayResult::KeepOpen => {}
+                OverlayResult::Close => {
+                    self.overlay = None;
+                }
+                OverlayResult::Invoke(id) => {
+                    self.overlay = None;
+                    return self.invoke_action(&id);
+                }
+                OverlayResult::SwitchView(id) => {
+                    self.overlay = None;
+                    if let Some(v) = Self::view_for_id(&id) {
+                        self.current_view = v;
+                    } else {
+                        self.toast = Some(format!("no view for id: {id}"));
+                    }
+                }
+            }
+            return LoopState::Continue;
+        }
+
         // Action panes swallow keys when open.
         if self.describe_pane.is_open() {
             self.describe_pane.handle_key(key);
@@ -115,6 +234,12 @@ impl App {
 
         if self.port_forward_prompt.is_some() {
             self.handle_port_forward_prompt_key(key);
+            return LoopState::Continue;
+        }
+
+        // Ctrl+P opens the command palette.
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('p') {
+            self.open_palette();
             return LoopState::Continue;
         }
 
@@ -321,6 +446,9 @@ impl App {
         }
         self.render_action_footer(frame);
         self.render_overlay(frame);
+        if let Some(overlay) = &self.overlay {
+            overlay.render(frame, frame.area());
+        }
     }
 
     fn render_action_footer(&self, frame: &mut Frame<'_>) {

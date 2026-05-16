@@ -5,6 +5,8 @@ pub mod action_shipped;
 pub mod actions;
 pub mod app;
 pub mod command;
+pub mod overlay;
+pub mod overlays;
 pub mod view;
 pub mod views;
 

@@ -33,6 +33,12 @@ serde_yaml = "0.9"
 clap = { version = "4", features = ["derive", "env"] }
 is-terminal = "0.4"
 
+# TUI extras
+nucleo-matcher = "0.3"
+arboard = "3"
+toml = "0.8"
+dirs = "5"
+
 # TUI
 ratatui = "0.29"
 crossterm = "0.28"
