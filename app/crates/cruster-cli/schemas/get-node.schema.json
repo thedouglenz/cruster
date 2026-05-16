@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/get-node/v1.json",
+  "title": "cruster get node (NDJSON record)",
+  "description": "One record per node. Default mode emits pruned k8s objects.",
+  "type": "object",
+  "required": ["metadata"]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/get-namespace/v1.json",
+  "title": "cruster get namespace (NDJSON record)",
+  "description": "One record per namespace. Default mode emits pruned k8s objects.",
+  "type": "object",
+  "required": ["metadata"]
+}

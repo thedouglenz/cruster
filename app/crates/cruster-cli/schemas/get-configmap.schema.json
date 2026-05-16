@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/get-configmap/v1.json",
+  "title": "cruster get configmap (NDJSON record)",
+  "description": "One record per configmap. Default mode emits pruned k8s objects.",
+  "type": "object",
+  "required": ["metadata"]
+}
