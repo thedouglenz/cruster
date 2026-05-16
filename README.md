@@ -11,14 +11,19 @@ This repository is a monorepo:
 
 ## Status
 
-Phase 3C (theme engine) complete: 9 bundled themes (terminal/dark/
-light/solarized-dark/solarized-light/monokai/gruvbox/tokyonight/
-catppuccin), TOML-based, `T` opens theme palette in the TUI, switch
-gated by Pro tier (Free always lands on `terminal`). `cruster theme
-list/preview/install` CLI verbs (install stubbed for Phase 5).
+**Phase 3 complete.** 3D added keymap presets (normal/vim/emacs,
+selectable via `~/.config/cruster/keymap.toml`) and named layouts
+(Single/Triplet/Incident, switchable with Alt+1/2/3). All input now
+flows through a `Keymap` that resolves chords to semantic actions —
+swap presets without recompiling.
 
-Plus everything earlier: Phase 2A TUI parity, Phase 2B LLM-efficient
-CLI, Phase 3A ergonomics, Phase 3B task-first navigation.
+Everything earlier: Phase 1 skeleton, Phase 2A TUI parity, Phase 2B
+LLM-efficient CLI, Phase 3A ergonomics (palette/search/safety/copy-
+kubectl/history), Phase 3B task-first navigation (relationships/diff/
+workflows), Phase 3C themes (9 bundled, Pro-gated).
+
+Next: Phase 4 (agent surface — prompt actions, diagnostic export,
+agentskills.io skills, Claude Code plugin).
 
 Next: Phase 3D (keymap presets + named layouts).
 
