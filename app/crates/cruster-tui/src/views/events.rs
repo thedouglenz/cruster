@@ -12,12 +12,14 @@ use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::app::LoopState;
+use crate::overlays::search::Filter;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
 pub struct EventsView {
     selected: usize,
     snapshot: Vec<(ResourceKey, Event)>,
+    filter: Filter,
 }
 
 impl EventsView {
@@ -35,7 +37,7 @@ impl ResourceView for EventsView {
     async fn refresh(&mut self, registry: &StoreRegistry) {
         let mut snap = registry.events.snapshot().await;
         snap.sort_by(|a, b| event_time(&b.1).cmp(&event_time(&a.1)));
-        self.snapshot = snap;
+        self.snapshot = crate::overlays::search::apply(&self.filter, snap, |e| e.type_.clone());
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
         }
@@ -126,6 +128,10 @@ impl ResourceView for EventsView {
 
     fn selected_key(&self) -> Option<ResourceKey> {
         self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
     }
 }
 

@@ -11,12 +11,14 @@ use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::app::LoopState;
+use crate::overlays::search::Filter;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
 pub struct PodsView {
     selected: usize,
     snapshot: Vec<(ResourceKey, Pod)>,
+    filter: Filter,
 }
 
 impl PodsView {
@@ -62,7 +64,8 @@ impl ResourceView for PodsView {
     }
 
     async fn refresh(&mut self, registry: &StoreRegistry) {
-        self.snapshot = registry.pods.snapshot().await;
+        let snap = registry.pods.snapshot().await;
+        self.snapshot = crate::overlays::search::apply(&self.filter, snap, |p| Some(pod_phase(p)));
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
         }
@@ -135,6 +138,10 @@ impl ResourceView for PodsView {
 
     fn selected_key(&self) -> Option<ResourceKey> {
         self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
     }
 
     fn selected_can_exec(&self) -> bool {

@@ -22,7 +22,9 @@ use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
 use crate::overlay::{Overlay, OverlayResult};
+#[allow(unused_imports)]
 use crate::overlays::palette::{EntryKind, Palette, PaletteEntry};
+use crate::overlays::search::{Filter, SearchPrompt};
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
 use crate::views::deployments::DeploymentsView;
@@ -151,6 +153,20 @@ impl App {
         }
     }
 
+    /// If the current overlay is a live-filter source (search prompt),
+    /// push its current filter down to the active view so it applies
+    /// live as the user types.
+    fn apply_overlay_live_filter(&mut self) {
+        let buffer = self
+            .overlay
+            .as_ref()
+            .and_then(|o| o.live_filter_buffer())
+            .map(|s| s.to_string());
+        if let Some(buf) = buffer {
+            self.current_view.set_filter(Filter::parse(&buf));
+        }
+    }
+
     fn copy_kubectl_for_selection(&mut self) {
         let Some(describe) = self.actions.by_id("describe") else {
             return;
@@ -201,9 +217,12 @@ impl App {
                 .as_mut()
                 .map(|o| o.handle_key(key))
                 .unwrap_or(OverlayResult::KeepOpen);
+            // Live-update the view filter on every keystroke for the search prompt.
+            self.apply_overlay_live_filter();
             match result {
                 OverlayResult::KeepOpen => {}
                 OverlayResult::Close => {
+                    // On close, the live filter is already set (or empty for esc).
                     self.overlay = None;
                 }
                 OverlayResult::Invoke(id) => {
@@ -240,6 +259,12 @@ impl App {
         // Ctrl+P opens the command palette.
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('p') {
             self.open_palette();
+            return LoopState::Continue;
+        }
+
+        // / opens the search prompt.
+        if key.code == KeyCode::Char('/') {
+            self.overlay = Some(Box::new(SearchPrompt::new()));
             return LoopState::Continue;
         }
 

@@ -21,4 +21,11 @@ pub enum OverlayResult {
 pub trait Overlay: Send {
     fn handle_key(&mut self, key: KeyEvent) -> OverlayResult;
     fn render(&self, frame: &mut Frame<'_>, area: Rect);
+
+    /// If this overlay is a live filter source (the search prompt),
+    /// return its current buffer so the App can re-apply the filter
+    /// on every keystroke. Default `None` for non-search overlays.
+    fn live_filter_buffer(&self) -> Option<&str> {
+        None
+    }
 }

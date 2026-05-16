@@ -15,6 +15,7 @@ use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::app::LoopState;
+use crate::overlays::search::Filter;
 use crate::view::ResourceView;
 use crate::views::events::human_age;
 
@@ -22,6 +23,7 @@ use crate::views::events::human_age;
 pub struct ConfigMapsView {
     selected: usize,
     snapshot: Vec<(ResourceKey, ConfigMap)>,
+    filter: Filter,
 }
 
 impl ConfigMapsView {
@@ -37,7 +39,8 @@ impl ResourceView for ConfigMapsView {
     }
 
     async fn refresh(&mut self, registry: &StoreRegistry) {
-        self.snapshot = registry.configmaps.snapshot().await;
+        let snap = registry.configmaps.snapshot().await;
+        self.snapshot = crate::overlays::search::apply(&self.filter, snap, |_| None);
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
         }
@@ -117,6 +120,10 @@ impl ResourceView for ConfigMapsView {
 
     fn selected_key(&self) -> Option<ResourceKey> {
         self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
     }
 }
 

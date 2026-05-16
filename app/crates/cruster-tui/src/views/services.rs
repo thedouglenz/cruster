@@ -11,12 +11,14 @@ use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::app::LoopState;
+use crate::overlays::search::Filter;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
 pub struct ServicesView {
     selected: usize,
     snapshot: Vec<(ResourceKey, Service)>,
+    filter: Filter,
 }
 
 impl ServicesView {
@@ -32,7 +34,8 @@ impl ResourceView for ServicesView {
     }
 
     async fn refresh(&mut self, registry: &StoreRegistry) {
-        self.snapshot = registry.services.snapshot().await;
+        let snap = registry.services.snapshot().await;
+        self.snapshot = crate::overlays::search::apply(&self.filter, snap, |_| None);
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
         }
@@ -114,6 +117,10 @@ impl ResourceView for ServicesView {
 
     fn selected_key(&self) -> Option<ResourceKey> {
         self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        self.filter = filter;
     }
 }
 

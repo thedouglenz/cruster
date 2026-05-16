@@ -51,4 +51,8 @@ pub trait ResourceView: Send {
     fn selected_can_exec(&self) -> bool {
         false
     }
+
+    /// Apply a search/filter. Default: ignored. Per-view implementations
+    /// retain the filter and apply it during `refresh`.
+    fn set_filter(&mut self, _filter: crate::overlays::search::Filter) {}
 }
