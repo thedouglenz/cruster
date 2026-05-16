@@ -5,6 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub mod diff;
+pub mod tier;
 
 /// Uniquely identifies a Kubernetes resource within a cluster.
 ///
