@@ -43,6 +43,14 @@ pub enum LoopState {
     Quit,
 }
 
+/// Which pane currently receives non-overlay keystrokes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneFocus {
+    View,
+    Describe,
+    Logs,
+}
+
 /// Active prompt for a port-forward mapping ("local:remote").
 struct PortForwardPrompt {
     pod_key: ResourceKey,
@@ -70,6 +78,7 @@ pub struct App {
     tier: Tier,
     keymap: crate::keymap::Keymap,
     layout: crate::layout::Layout,
+    pane_focus: PaneFocus,
     toast: Option<String>,
 }
 
@@ -105,7 +114,39 @@ impl App {
                 crate::keymap::KeymapConfig::load_or_default().preset,
             ),
             layout: crate::layout::Layout::default(),
+            pane_focus: PaneFocus::View,
             toast: None,
+        }
+    }
+
+    fn cycle_pane_focus(&mut self) {
+        let mut candidates = vec![PaneFocus::View];
+        if self.describe_pane.is_open() {
+            candidates.push(PaneFocus::Describe);
+        }
+        if self.logs_pane.is_open() {
+            candidates.push(PaneFocus::Logs);
+        }
+        if candidates.len() < 2 {
+            return;
+        }
+        let current = candidates
+            .iter()
+            .position(|f| *f == self.pane_focus)
+            .unwrap_or(0);
+        self.pane_focus = candidates[(current + 1) % candidates.len()];
+    }
+
+    /// Normalise focus so it never points to a closed pane.
+    fn normalise_pane_focus(&mut self) {
+        match self.pane_focus {
+            PaneFocus::Describe if !self.describe_pane.is_open() => {
+                self.pane_focus = PaneFocus::View;
+            }
+            PaneFocus::Logs if !self.logs_pane.is_open() => {
+                self.pane_focus = PaneFocus::View;
+            }
+            _ => {}
         }
     }
 
@@ -160,6 +201,7 @@ impl App {
             S::Describe => {
                 if let Some((title, yaml)) = self.current_view.selected_yaml() {
                     self.describe_pane.open(title, yaml);
+                    self.pane_focus = PaneFocus::Describe;
                 } else {
                     self.toast = Some("nothing selected".into());
                 }
@@ -167,6 +209,9 @@ impl App {
             }
             S::Logs => {
                 self.open_logs_for_selection();
+                if self.logs_pane.is_open() {
+                    self.pane_focus = PaneFocus::Logs;
+                }
                 LoopState::Continue
             }
             S::Exec => {
@@ -482,14 +527,26 @@ impl App {
             return LoopState::Continue;
         }
 
-        // Action panes swallow keys when open.
-        if self.describe_pane.is_open() {
-            self.describe_pane.handle_key(key);
+        // Make sure focus is valid (panes may have closed since last tick).
+        self.normalise_pane_focus();
+
+        // Tab cycles focus across view + open panes.
+        if key.code == KeyCode::Tab {
+            self.cycle_pane_focus();
             return LoopState::Continue;
         }
-        if self.logs_pane.is_open() {
-            self.logs_pane.handle_key(key);
-            return LoopState::Continue;
+
+        // Route to focused pane (if focus is a pane and it's open).
+        match self.pane_focus {
+            PaneFocus::Describe if self.describe_pane.is_open() => {
+                self.describe_pane.handle_key(key);
+                return LoopState::Continue;
+            }
+            PaneFocus::Logs if self.logs_pane.is_open() => {
+                self.logs_pane.handle_key(key);
+                return LoopState::Continue;
+            }
+            _ => {}
         }
 
         if self.port_forward_prompt.is_some() {
@@ -700,9 +757,17 @@ impl App {
                 .split(area);
             self.current_view.render(frame);
             if self.describe_pane.is_open() {
-                self.describe_pane.render(frame, chunks[1]);
+                self.describe_pane.render(
+                    frame,
+                    chunks[1],
+                    self.pane_focus == PaneFocus::Describe,
+                );
             } else {
-                self.logs_pane.render(frame, chunks[1]);
+                self.logs_pane.render(
+                    frame,
+                    chunks[1],
+                    self.pane_focus == PaneFocus::Logs,
+                );
             }
         } else {
             self.current_view.render(frame);
@@ -944,14 +1009,38 @@ mod tests {
     }
 
     #[test]
-    fn describe_pane_swallows_keys_when_open() {
+    fn describe_pane_swallows_keys_when_focused() {
         let mut a = app();
         a.describe_pane.open("test", "yaml");
-        // 'q' should not quit when describe pane is open
+        a.pane_focus = PaneFocus::Describe;
+        // 'q' should not quit when describe pane is focused
         assert_eq!(a.handle_key(press(KeyCode::Char('q'))), LoopState::Continue);
         // Esc closes the pane
         let _ = a.handle_key(press(KeyCode::Esc));
         assert!(!a.describe_pane.is_open());
+    }
+
+    #[test]
+    fn tab_cycles_focus_when_pane_open() {
+        let mut a = app();
+        a.describe_pane.open("test", "yaml");
+        // Starts focused on View
+        assert_eq!(a.pane_focus, PaneFocus::View);
+        let _ = a.handle_key(press(KeyCode::Tab));
+        assert_eq!(a.pane_focus, PaneFocus::Describe);
+        let _ = a.handle_key(press(KeyCode::Tab));
+        assert_eq!(a.pane_focus, PaneFocus::View);
+    }
+
+    #[test]
+    fn focus_normalises_when_pane_closes() {
+        let mut a = app();
+        a.describe_pane.open("test", "yaml");
+        a.pane_focus = PaneFocus::Describe;
+        a.describe_pane.close();
+        // Next handle_key normalises focus.
+        let _ = a.handle_key(press(KeyCode::Char('x')));
+        assert_eq!(a.pane_focus, PaneFocus::View);
     }
 
     #[test]

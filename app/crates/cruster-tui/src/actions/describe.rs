@@ -67,13 +67,14 @@ impl DescribePane {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool) {
         if !self.open {
             return;
         }
+        let focus_tag = if focused { " ◉" } else { "" };
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(format!(" describe: {} — esc closes ", self.title));
+            .title(format!(" describe: {}{} — esc closes ", self.title, focus_tag));
         let para = Paragraph::new(self.content.clone())
             .block(block)
             .wrap(Wrap { trim: false })

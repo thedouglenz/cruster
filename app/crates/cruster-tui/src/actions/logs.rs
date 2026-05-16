@@ -172,7 +172,7 @@ impl LogsPane {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, focused: bool) {
         if !self.open {
             return;
         }
@@ -187,13 +187,15 @@ impl LogsPane {
             .map(|s| s.as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        let focus_tag = if focused { " ◉" } else { "" };
         let title = if self.grep.is_empty() {
-            format!(" logs: {} — / grep · esc closes ", self.title)
+            format!(" logs: {}{} — / grep · esc closes ", self.title, focus_tag)
         } else {
             let suffix = if self.grep_active { " (typing)" } else { "" };
             format!(
-                " logs: {} — grep:'{}' ({}/{}){} ",
+                " logs: {}{} — grep:'{}' ({}/{}){} ",
                 self.title,
+                focus_tag,
                 self.grep,
                 filtered.len(),
                 lines.len(),
