@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/logs/v1.json",
+  "title": "cruster logs (NDJSON record)",
+  "type": "object",
+  "required": ["pod", "line"],
+  "properties": {
+    "pod": { "type": "string" },
+    "container": { "type": ["string", "null"] },
+    "line": { "type": "string" }
+  }
+}
