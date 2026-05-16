@@ -19,7 +19,9 @@ use ratatui::widgets::Paragraph;
 
 use crate::actions::describe::DescribePane;
 use crate::actions::logs::LogsPane;
+use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
+use cruster_core::ResourceKey;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
 use crate::views::deployments::DeploymentsView;
@@ -36,6 +38,12 @@ pub enum LoopState {
     Quit,
 }
 
+/// Active prompt for a port-forward mapping ("local:remote").
+struct PortForwardPrompt {
+    pod_key: ResourceKey,
+    buffer: String,
+}
+
 pub struct App {
     registry: StoreRegistry,
     client: Option<Client>,
@@ -43,6 +51,8 @@ pub struct App {
     command: CommandLine,
     describe_pane: DescribePane,
     logs_pane: LogsPane,
+    port_forwards: PortForwards,
+    port_forward_prompt: Option<PortForwardPrompt>,
     toast: Option<String>,
 }
 
@@ -55,6 +65,8 @@ impl App {
             command: CommandLine::new(),
             describe_pane: DescribePane::new(),
             logs_pane: LogsPane::new(),
+            port_forwards: PortForwards::new(),
+            port_forward_prompt: None,
             toast: None,
         }
     }
@@ -99,6 +111,11 @@ impl App {
             return LoopState::Continue;
         }
 
+        if self.port_forward_prompt.is_some() {
+            self.handle_port_forward_prompt_key(key);
+            return LoopState::Continue;
+        }
+
         if self.command.is_active() {
             match self.command.handle_key(key) {
                 CommandAction::None | CommandAction::Cancel => {}
@@ -135,7 +152,62 @@ impl App {
                 self.exec_into_selection();
                 LoopState::Continue
             }
+            KeyCode::Char('f') => {
+                self.start_port_forward_prompt();
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
+        }
+    }
+
+    fn start_port_forward_prompt(&mut self) {
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        if key.kind != "Pod" {
+            self.toast = Some(format!(
+                "port-forward only supported for pods (selected: {})",
+                key.kind
+            ));
+            return;
+        }
+        self.port_forward_prompt = Some(PortForwardPrompt {
+            pod_key: key,
+            buffer: String::new(),
+        });
+    }
+
+    fn handle_port_forward_prompt_key(&mut self, key: KeyEvent) {
+        let Some(prompt) = self.port_forward_prompt.as_mut() else {
+            return;
+        };
+        match key.code {
+            KeyCode::Esc => {
+                self.port_forward_prompt = None;
+            }
+            KeyCode::Enter => {
+                let prompt = self.port_forward_prompt.take().unwrap();
+                match PortForward::start(prompt.pod_key.clone(), prompt.buffer.clone()) {
+                    Ok(pf) => {
+                        self.toast = Some(format!(
+                            "forwarded {} → pod/{}:{}",
+                            pf.mapping, prompt.pod_key.name, pf.mapping
+                        ));
+                        self.port_forwards.add(pf);
+                    }
+                    Err(e) => {
+                        self.toast = Some(format!("port-forward failed: {e}"));
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                prompt.buffer.pop();
+            }
+            KeyCode::Char(c) => {
+                prompt.buffer.push(c);
+            }
+            _ => {}
         }
     }
 
@@ -211,25 +283,30 @@ impl App {
 
     fn render_overlay(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
-        if self.command.is_active() {
+        let bottom = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+        if let Some(prompt) = &self.port_forward_prompt {
+            let line = format!(
+                "port-forward pod/{}: {}_ (esc cancels)",
+                prompt.pod_key.name, prompt.buffer
+            );
+            let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
+            frame.render_widget(bar, bottom);
+        } else if self.command.is_active() {
             let line = format!(":{}", self.command.buffer());
             let bar = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
-            let rect = Rect {
-                x: area.x,
-                y: area.y + area.height.saturating_sub(1),
-                width: area.width,
-                height: 1,
-            };
-            frame.render_widget(bar, rect);
+            frame.render_widget(bar, bottom);
         } else if let Some(msg) = &self.toast {
             let bar = Paragraph::new(msg.clone()).style(Style::default().bg(Color::Red));
-            let rect = Rect {
-                x: area.x,
-                y: area.y + area.height.saturating_sub(1),
-                width: area.width,
-                height: 1,
-            };
-            frame.render_widget(bar, rect);
+            frame.render_widget(bar, bottom);
+        } else if !self.port_forwards.is_empty() {
+            let line = format!(" port-forwards: {} active ", self.port_forwards.len());
+            let bar = Paragraph::new(line).style(Style::default().bg(Color::Blue));
+            frame.render_widget(bar, bottom);
         }
     }
 }
