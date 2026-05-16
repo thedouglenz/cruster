@@ -6,8 +6,8 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::apps::v1::Deployment;
 use ratatui::layout::Constraint;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
@@ -45,33 +45,41 @@ impl ResourceView for DeploymentsView {
         let area = frame.area();
 
         let header = Row::new(vec![
+            "",
             "NAMESPACE",
             "NAME",
             "READY",
             "UP-TO-DATE",
             "AVAILABLE",
         ])
-        .style(Style::default().add_modifier(Modifier::BOLD));
+        .style(Style::default().fg(Color::DarkGray));
 
         let table_rows: Vec<Row> = self
             .snapshot
             .iter()
-            .map(|(key, dep)| {
+            .enumerate()
+            .map(|(i, (key, dep))| {
                 let ns = key.namespace.as_deref().unwrap_or("-");
                 let (ready, desired) = ready_desired(dep);
-                let updated = updated_replicas(dep);
-                let available = available_replicas(dep);
-                Row::new(vec![
+                let marker = if i == self.selected { "▎" } else { " " };
+                let row = Row::new(vec![
+                    Cell::from(marker),
                     Cell::from(ns.to_string()),
                     Cell::from(key.name.clone()),
                     Cell::from(format!("{ready}/{desired}")),
-                    Cell::from(updated.to_string()),
-                    Cell::from(available.to_string()),
-                ])
+                    Cell::from(updated_replicas(dep).to_string()),
+                    Cell::from(available_replicas(dep).to_string()),
+                ]);
+                if i == self.selected {
+                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                } else {
+                    row
+                }
             })
             .collect();
 
         let widths = [
+            Constraint::Length(2),
             Constraint::Length(20),
             Constraint::Min(20),
             Constraint::Length(10),
@@ -79,20 +87,13 @@ impl ResourceView for DeploymentsView {
             Constraint::Length(10),
         ];
 
-        let table = Table::new(table_rows, widths)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!(
-                " deployments ({}) — j/k move · :kind switch · q quit ",
-                self.snapshot.len()
-            )))
-            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let table = Table::new(table_rows, widths).header(header).block(
+            Block::default()
+                .borders(Borders::TOP)
+                .title(format!(" deployments · {} ", self.snapshot.len())),
+        );
 
-        let mut state = TableState::default();
-        if !self.snapshot.is_empty() {
-            state.select(Some(self.selected.min(self.snapshot.len() - 1)));
-        }
-
-        frame.render_stateful_widget(table, area, &mut state);
+        frame.render_widget(table, area);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> LoopState {

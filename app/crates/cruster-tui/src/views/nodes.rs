@@ -6,8 +6,8 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Node;
 use ratatui::layout::Constraint;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
@@ -45,24 +45,33 @@ impl ResourceView for NodesView {
     fn render(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
 
-        let header = Row::new(vec!["NAME", "STATUS", "ROLES", "VERSION", "OS-IMAGE"])
-            .style(Style::default().add_modifier(Modifier::BOLD));
+        let header = Row::new(vec!["", "NAME", "STATUS", "ROLES", "VERSION", "OS-IMAGE"])
+            .style(Style::default().fg(Color::DarkGray));
 
         let table_rows: Vec<Row> = self
             .snapshot
             .iter()
-            .map(|(key, node)| {
-                Row::new(vec![
+            .enumerate()
+            .map(|(i, (key, node))| {
+                let marker = if i == self.selected { "▎" } else { " " };
+                let row = Row::new(vec![
+                    Cell::from(marker),
                     Cell::from(key.name.clone()),
                     Cell::from(node_status(node)),
                     Cell::from(node_roles(node)),
                     Cell::from(node_version(node)),
                     Cell::from(node_os_image(node)),
-                ])
+                ]);
+                if i == self.selected {
+                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                } else {
+                    row
+                }
             })
             .collect();
 
         let widths = [
+            Constraint::Length(2),
             Constraint::Length(30),
             Constraint::Length(10),
             Constraint::Length(16),
@@ -70,20 +79,13 @@ impl ResourceView for NodesView {
             Constraint::Min(20),
         ];
 
-        let table = Table::new(table_rows, widths)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(format!(
-                " nodes ({}) — j/k move · :kind switch · q quit ",
-                self.snapshot.len()
-            )))
-            .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let table = Table::new(table_rows, widths).header(header).block(
+            Block::default()
+                .borders(Borders::TOP)
+                .title(format!(" nodes · {} ", self.snapshot.len())),
+        );
 
-        let mut state = TableState::default();
-        if !self.snapshot.is_empty() {
-            state.select(Some(self.selected.min(self.snapshot.len() - 1)));
-        }
-
-        frame.render_stateful_widget(table, area, &mut state);
+        frame.render_widget(table, area);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> LoopState {
