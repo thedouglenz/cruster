@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cruster — Kubernetes TUI for the agent era</title>
+  <meta name="description" content="A paid Kubernetes TUI built for speed, ergonomics, and Claude Code compatibility. A modern k9s replacement that gives your agent fewer, smaller, smarter calls.">
+  <meta property="og:title" content="cruster — Kubernetes TUI for the agent era">
+  <meta property="og:description" content="One CLI call. One markdown bundle. Manifest, events, logs — your agent gets the whole story.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <div class="prompt"><span class="muted">$</span> cruster get pods<span class="caret">▎</span></div>
+    <h1>Kubernetes TUI for the agent era</h1>
+    <p class="tagline">
+      A paid k9s competitor built on three pillars: speed, ergonomics,
+      and Claude Code compatibility. One CLI call to bundle a failing
+      pod's manifest, events, and logs into a markdown your agent can
+      read. Or a fast TUI when you'd rather drive it yourself.
+    </p>
+    <div class="cta-row">
+      <a class="cta primary" href="#install">Install</a>
+      <a class="cta ghost" href="https://github.com/thedouglenz/cruster">View on GitHub</a>
+    </div>
+    <code class="install-hint">cargo install --git https://github.com/thedouglenz/cruster.git --bin cruster --locked</code>
+  </div>
+</header>
+
+<section class="pillars">
+  <div class="container">
+    <h2>Three pillars</h2>
+    <div class="grid-3">
+      <article class="card">
+        <h3>① Speed</h3>
+        <p>
+          Rust + ratatui. Cold start to first interactive frame in
+          under <strong>100 ms</strong> on a 100-pod cluster.
+          Steady-state CPU under <strong>5%</strong> on a 10k-pod
+          cluster with the pods view open and scrolling. Memory
+          under <strong>200 MB</strong> resident.
+        </p>
+      </article>
+      <article class="card">
+        <h3>② Ergonomics</h3>
+        <p>
+          Task-first, not resource-first. One keystroke jumps to a
+          selected pod's owner chain, mounted configmaps and
+          secrets, endpoints, recent events. Vim/emacs/normal
+          keymap presets. Three named layouts. Search,
+          relationships, history, workflows.
+        </p>
+      </article>
+      <article class="card">
+        <h3>③ Agent-native</h3>
+        <p>
+          A first-class LLM-efficient CLI parallel to the TUI.
+          Stable per-verb JSON schemas inlined into <code>cruster
+          help-json</code>. <code>cruster export</code> bundles
+          manifest + events + logs into one markdown for your
+          agent. agentskills.io skills + a Claude Code plugin
+          ship in the box.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="comparison">
+  <div class="container">
+    <h2>Why your agent will prefer cruster</h2>
+    <p class="lead">
+      Diagnosing the same failing pod with kubectl vs cruster
+      <code>export</code>. Smaller payload, fewer round-trips,
+      one markdown your agent reads end-to-end.
+    </p>
+    <div class="compare-grid">
+      <div class="compare-col">
+        <h3>kubectl</h3>
+        <pre><code>$ kubectl describe pod at-foo -n agent-platform
+$ kubectl logs at-foo -n agent-platform
+$ kubectl get events -n agent-platform \
+    --field-selector involvedObject.name=at-foo</code></pre>
+        <ul class="stats">
+          <li><strong>4</strong> calls</li>
+          <li><strong>~3.7&nbsp;KB</strong> stdout</li>
+          <li><strong>~6.6&nbsp;s</strong> wall</li>
+          <li>Agent stitches the output back together</li>
+        </ul>
+      </div>
+      <div class="compare-col winner">
+        <h3>cruster</h3>
+        <pre><code>$ cruster export pod/at-foo -n agent-platform</code></pre>
+        <ul class="stats">
+          <li><strong>1</strong> call</li>
+          <li>One self-contained <strong>markdown</strong> bundle</li>
+          <li>Manifest + events + log&nbsp;tail in document order</li>
+          <li>Agent reads it linearly</li>
+        </ul>
+      </div>
+    </div>
+    <p class="footnote">
+      Measured against the staged failing-pod scenario on a local
+      k3d cluster. The cruster path was independently picked by an
+      LLM agent given only <code>cruster --help</code> and the
+      inline schemas in <code>cruster help-json</code>.
+    </p>
+  </div>
+</section>
+
+<section class="benchmarks">
+  <div class="container">
+    <h2>Performance targets</h2>
+    <p class="lead">
+      Design targets that gate the v1 release. Real measured
+      numbers will replace these as the benchmark harness lands.
+    </p>
+    <div class="grid-3">
+      <div class="stat-block">
+        <div class="big">&lt; 100 ms</div>
+        <div class="label">Cold start to interactive</div>
+        <div class="sub">100-pod cluster, p95 over 50 runs</div>
+      </div>
+      <div class="stat-block">
+        <div class="big">&lt; 5 %</div>
+        <div class="label">Steady-state CPU</div>
+        <div class="sub">10k-pod cluster, scrolling the pods view</div>
+      </div>
+      <div class="stat-block">
+        <div class="big">&lt; 200 MB</div>
+        <div class="label">Resident memory</div>
+        <div class="sub">10k-pod cluster, all default watches</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="agents">
+  <div class="container">
+    <h2>Agent compatibility</h2>
+    <p class="lead">
+      Three skills (<code>cruster-investigate-pod</code>,
+      <code>cruster-resource-bundle</code>,
+      <code>cruster-recent-activity</code>) plus a Claude Code
+      plugin with matching slash commands. The skills follow the
+      agentskills.io standard and drop into any compatible agent.
+    </p>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Install path</th>
+            <th>One-line install</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Claude Code</td>
+            <td><code>~/.claude/skills/</code></td>
+            <td><code>./install.sh --agent claude</code></td>
+          </tr>
+          <tr>
+            <td>Cursor</td>
+            <td><code>./.cursor/skills/</code></td>
+            <td><code>./install.sh --agent cursor</code></td>
+          </tr>
+          <tr>
+            <td>Codex</td>
+            <td><code>~/.agentskills/</code></td>
+            <td><code>./install.sh --agent generic</code></td>
+          </tr>
+          <tr>
+            <td>Gemini CLI</td>
+            <td><code>~/.agentskills/</code></td>
+            <td><code>./install.sh --agent generic</code></td>
+          </tr>
+          <tr>
+            <td>Goose / OpenHands / Amp</td>
+            <td><code>~/.agentskills/</code></td>
+            <td><code>./install.sh --agent generic</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="install">
+  <div class="container">
+    <h2>Install</h2>
+    <div class="install-grid">
+      <div class="install-card">
+        <h3>Cargo</h3>
+        <pre><code>cargo install --git https://github.com/thedouglenz/cruster.git \
+  --bin cruster --locked</code></pre>
+        <p>Any platform with a Rust toolchain.</p>
+      </div>
+      <div class="install-card">
+        <h3>Homebrew</h3>
+        <pre><code>brew tap thedouglenz/cruster
+brew install cruster</code></pre>
+        <p>macOS &amp; Linux. Tap goes live once the first release ships.</p>
+      </div>
+      <div class="install-card">
+        <h3>Prebuilt binary</h3>
+        <pre><code>curl -L https://github.com/thedouglenz/cruster/releases/latest \
+  | tar xz cruster</code></pre>
+        <p>macOS arm64 / Intel and Linux x86_64.</p>
+      </div>
+      <div class="install-card">
+        <h3>From source</h3>
+        <pre><code>git clone https://github.com/thedouglenz/cruster.git
+cd cruster/app &amp;&amp; cargo build --release</code></pre>
+        <p>Lands in <code>app/target/release/cruster</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" class="pricing">
+  <div class="container">
+    <h2>Pricing</h2>
+    <p class="lead">
+      The agent foundation (CLI, skills, Claude Code plugin) stays
+      free forever — paywalling it would kill the ecosystem.
+      Convenience layer + capabilities with real backend cost are
+      where Pro starts.
+    </p>
+    <div class="pricing-grid">
+      <div class="tier-card">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <ul>
+          <li>Single cluster</li>
+          <li>Full TUI ergonomics</li>
+          <li>Default <code>terminal</code> theme</li>
+          <li>LLM-efficient CLI</li>
+          <li>All agentskills + Claude Code plugin</li>
+        </ul>
+        <a class="cta ghost" href="#install">Install</a>
+      </div>
+      <div class="tier-card highlight">
+        <div class="badge">recommended</div>
+        <h3>Pro</h3>
+        <div class="price">$99<span class="per">/year</span></div>
+        <div class="alt-price">or $12/mo</div>
+        <ul>
+          <li><strong>Prompt actions</strong> (clipboard bridge)</li>
+          <li><strong>Diagnostic export</strong> (.md for tickets &amp; agents)</li>
+          <li>Theme switching + library + live reload</li>
+          <li>Multi-cluster <span class="muted">(coming soon)</span></li>
+          <li>GitOps visibility <span class="muted">(coming soon)</span></li>
+          <li>14-day trial: <code>cruster trial</code></li>
+        </ul>
+        <a class="cta primary" href="mailto:dev@cruster.dev?subject=cruster%20Pro">Get Pro</a>
+      </div>
+      <div class="tier-card">
+        <h3>Team</h3>
+        <div class="price">$29<span class="per">/mo/user</span></div>
+        <div class="alt-price">($290/yr/user)</div>
+        <ul>
+          <li>Everything in Pro</li>
+          <li>Shared team config (workflows, themes, prompts)</li>
+          <li>SSO</li>
+          <li>Audit log of cluster mutations</li>
+        </ul>
+        <a class="cta ghost" href="mailto:dev@cruster.dev?subject=cruster%20Team">Contact</a>
+      </div>
+      <div class="tier-card">
+        <h3>Enterprise</h3>
+        <div class="price">Contact</div>
+        <ul>
+          <li>Everything in Team</li>
+          <li>Self-hosted license server</li>
+          <li>BYO CA</li>
+          <li>Air-gapped mode</li>
+          <li>SLA</li>
+        </ul>
+        <a class="cta ghost" href="mailto:dev@cruster.dev?subject=cruster%20Enterprise">Contact</a>
+      </div>
+    </div>
+    <p class="footnote">
+      Annual is the default offer; monthly exists for evaluation.
+      No AI usage metering — cruster doesn't run an LLM or relay
+      tokens. All AI happens in your agent.
+    </p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="brand">cruster</div>
+        <div class="muted">Kubernetes for the agent era.</div>
+      </div>
+      <div>
+        <h4>Project</h4>
+        <ul>
+          <li><a href="https://github.com/thedouglenz/cruster">GitHub</a></li>
+          <li><a href="https://github.com/thedouglenz/cruster/releases">Releases</a></li>
+          <li><a href="https://github.com/thedouglenz/cruster/issues">Issues</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <ul>
+          <li><a href="mailto:dev@cruster.dev">dev@cruster.dev</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="copy">
+      © 2026 Doug Lenz · Proprietary
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

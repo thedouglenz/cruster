@@ -8,14 +8,21 @@ This repository is a monorepo:
 - `app/` — the Rust TUI + CLI (cargo workspace, `cd app && cargo build`)
 - `skills/` — agentskills.io-format skills for any compatible AI agent
 - `plugins/claude-code/` — Claude Code plugin (skills + slash commands)
-- `web/` — the marketing site (not yet built)
-- `docs/` — specs and implementation plans
+- `Formula/` — homebrew formula
+- `web/` — landing page (plain HTML + CSS, deployable anywhere)
+- `docs/` — specs, implementation plans, `RELEASING.md` runbook
+- `.github/workflows/` — CI + release pipelines
 
 ## Status
 
-**Phase 5B complete.** Distribution: `cargo install`, homebrew
-formula, and CI release workflow (macOS arm64/Intel + Linux x86_64).
-See [`docs/RELEASING.md`](docs/RELEASING.md) for the cut-a-release
+**Phase 5C complete — v1 MVP scope closed.** Landing page lives at
+`web/index.html` (plain HTML + CSS, no build step). Preview locally
+with `cd web && python3 -m http.server`. Deploy by dropping `web/`
+on any static host.
+
+**Phase 5B.** Distribution: `cargo install`, homebrew formula, and
+CI release workflow (macOS arm64/Intel + Linux x86_64). See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the cut-a-release
 runbook.
 
 **Phase 5A.** License loader + 14-day trial:
@@ -56,7 +63,9 @@ themes (Pro-gated), Phase 3D keymap presets + named layouts, Phase 3E
 visual polish (thin top rule, `▎` selection accent, pane focus + Tab,
 modal port-forward).
 
-Next: Phase 5C (landing page).
+**v1 MVP complete.** Remaining work is real-world: benchmark
+measurement, first GitHub release, homebrew tap, paid signup flow,
+multi-cluster, GitOps visibility.
 
 ## Install
 
