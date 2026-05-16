@@ -12,10 +12,11 @@ use cruster_kube::StoreRegistry;
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 
+use crate::actions::describe::DescribePane;
 use crate::command::{CommandAction, CommandLine};
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
@@ -37,6 +38,7 @@ pub struct App {
     registry: StoreRegistry,
     current_view: Box<dyn ResourceView>,
     command: CommandLine,
+    describe_pane: DescribePane,
     toast: Option<String>,
 }
 
@@ -46,6 +48,7 @@ impl App {
             registry,
             current_view: Box::new(PodsView::new()),
             command: CommandLine::new(),
+            describe_pane: DescribePane::new(),
             toast: None,
         }
     }
@@ -80,6 +83,12 @@ impl App {
         // Clear toast on any keystroke.
         self.toast = None;
 
+        // Describe pane swallows keys when open.
+        if self.describe_pane.is_open() {
+            self.describe_pane.handle_key(key);
+            return LoopState::Continue;
+        }
+
         if self.command.is_active() {
             match self.command.handle_key(key) {
                 CommandAction::None | CommandAction::Cancel => {}
@@ -100,6 +109,14 @@ impl App {
                 LoopState::Continue
             }
             KeyCode::Char('q') | KeyCode::Esc => LoopState::Quit,
+            KeyCode::Char('d') | KeyCode::Char('y') => {
+                if let Some((title, yaml)) = self.current_view.selected_yaml() {
+                    self.describe_pane.open(title, yaml);
+                } else {
+                    self.toast = Some("nothing selected".into());
+                }
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
         }
     }
@@ -117,10 +134,7 @@ impl App {
     ) -> anyhow::Result<()> {
         loop {
             self.current_view.refresh(&self.registry).await;
-            terminal.draw(|f| {
-                self.current_view.render(f);
-                self.render_overlay(f);
-            })?;
+            terminal.draw(|f| self.render_full(f))?;
 
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
@@ -130,6 +144,24 @@ impl App {
                 }
             }
         }
+    }
+
+    fn render_full(&self, frame: &mut Frame<'_>) {
+        let area = frame.area();
+        if self.describe_pane.is_open() {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(area);
+            // Top: current view rendered to full frame (the view doesn't
+            // know it's being clipped; the pane below overdraws the
+            // bottom half). A cleaner Rect-passing rework is Phase 3.
+            self.current_view.render(frame);
+            self.describe_pane.render(frame, chunks[1]);
+        } else {
+            self.current_view.render(frame);
+        }
+        self.render_overlay(frame);
     }
 
     fn render_overlay(&self, frame: &mut Frame<'_>) {
@@ -255,5 +287,24 @@ mod tests {
         }
         a.handle_key(press(KeyCode::Enter));
         assert!(a.toast.is_some());
+    }
+
+    #[test]
+    fn d_with_no_selection_shows_toast() {
+        let mut a = app();
+        let _ = a.handle_key(press(KeyCode::Char('d')));
+        assert!(!a.describe_pane.is_open());
+        assert!(a.toast.is_some());
+    }
+
+    #[test]
+    fn describe_pane_swallows_keys_when_open() {
+        let mut a = app();
+        a.describe_pane.open("test", "yaml");
+        // 'q' should not quit when describe pane is open
+        assert_eq!(a.handle_key(press(KeyCode::Char('q'))), LoopState::Continue);
+        // Esc closes the pane
+        let _ = a.handle_key(press(KeyCode::Esc));
+        assert!(!a.describe_pane.is_open());
     }
 }

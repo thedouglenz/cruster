@@ -1,5 +1,6 @@
 //! Cruster terminal UI.
 
+pub mod actions;
 pub mod app;
 pub mod command;
 pub mod view;

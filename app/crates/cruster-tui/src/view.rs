@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
+use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use ratatui::Frame;
 
@@ -29,4 +30,16 @@ pub trait ResourceView: Send {
 
     /// Handle a single key press.
     fn handle_key(&mut self, key: KeyEvent) -> LoopState;
+
+    /// `(title, yaml)` for the currently selected resource, if any.
+    /// Default implementation returns `None`; per-kind views override.
+    fn selected_yaml(&self) -> Option<(String, String)> {
+        None
+    }
+
+    /// The `ResourceKey` of the currently selected resource, if any.
+    /// Default implementation returns `None`; per-kind views override.
+    fn selected_key(&self) -> Option<ResourceKey> {
+        None
+    }
 }

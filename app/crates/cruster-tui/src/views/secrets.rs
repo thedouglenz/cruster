@@ -111,6 +111,29 @@ impl ResourceView for SecretsView {
         }
         LoopState::Continue
     }
+
+    fn selected_yaml(&self) -> Option<(String, String)> {
+        let (key, obj) = self.snapshot.get(self.selected)?;
+        // Redact data and stringData before serialising so the YAML
+        // dump never reveals secret values, even via describe/y.
+        let mut redacted = obj.clone();
+        if let Some(d) = &mut redacted.data {
+            for (_, v) in d.iter_mut() {
+                *v = k8s_openapi::ByteString(b"<redacted>".to_vec());
+            }
+        }
+        if let Some(d) = &mut redacted.string_data {
+            for (_, v) in d.iter_mut() {
+                *v = "<redacted>".into();
+            }
+        }
+        let yaml = serde_yaml::to_string(&redacted).ok()?;
+        Some((key.to_string(), yaml))
+    }
+
+    fn selected_key(&self) -> Option<ResourceKey> {
+        self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
 }
 
 fn secret_type(s: &Secret) -> String {

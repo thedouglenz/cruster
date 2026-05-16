@@ -473,6 +473,7 @@ dependencies = [
  "futures",
  "k8s-openapi",
  "ratatui",
+ "serde_yaml",
  "tokio",
  "tracing",
 ]

@@ -117,6 +117,16 @@ impl ResourceView for EventsView {
         }
         LoopState::Continue
     }
+
+    fn selected_yaml(&self) -> Option<(String, String)> {
+        let (key, obj) = self.snapshot.get(self.selected)?;
+        let yaml = serde_yaml::to_string(obj).ok()?;
+        Some((key.to_string(), yaml))
+    }
+
+    fn selected_key(&self) -> Option<ResourceKey> {
+        self.snapshot.get(self.selected).map(|(k, _)| k.clone())
+    }
 }
 
 fn event_time(e: &Event) -> Option<Time> {
