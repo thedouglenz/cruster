@@ -11,8 +11,14 @@ This repository is a monorepo:
 
 ## Status
 
-Phase 1 (skeleton) complete: single cluster, pods view, read-only
-navigation. See `docs/superpowers/plans/` for upcoming phases.
+Phase 2A (TUI parity-lite) complete: 8 resource kinds (Pods,
+Deployments, Services, Nodes, Events, ConfigMaps, Secrets,
+Namespaces), `:command-mode` kind switcher, and 5 action verbs —
+describe (`d`/`y`), logs with follow + grep (`l`), exec
+(`s`, suspends to `kubectl exec -it`), port-forward (`f`, prompts for
+mapping), edit YAML via `$EDITOR` then `kubectl apply` (`e`).
+
+Next: Phase 2B (LLM-efficient CLI mode).
 
 ## Quick start
 
@@ -20,11 +26,8 @@ navigation. See `docs/superpowers/plans/` for upcoming phases.
 cd app && cargo run --release -p cruster-bin
 ```
 
-Uses your active kubeconfig context. Keybindings:
-
-- `j` / `k` (or arrow keys) — move selection
-- `g` / `G` (or `Home` / `End`) — jump to top / bottom
-- `q` / `Esc` — quit
+Uses your active kubeconfig context. See `app/README.md` for the
+full keymap.
 
 ## Project layout
 
@@ -33,8 +36,8 @@ cruster/
 ├── app/                    # Rust workspace (the binary lives here)
 │   ├── crates/
 │   │   ├── cruster-core/   # shared types
-│   │   ├── cruster-kube/   # kube-rs wrapper, watch streams, in-memory store
-│   │   ├── cruster-tui/    # ratatui app, views, input handling
+│   │   ├── cruster-kube/   # kube-rs wrapper, watch streams, ResourceKind, StoreRegistry
+│   │   ├── cruster-tui/    # ratatui app, ResourceView trait, kind views, action panes
 │   │   └── cruster-bin/    # binary that wires everything together
 │   └── benches/            # perf harness
 ├── web/                    # marketing site (Phase 5)
