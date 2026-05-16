@@ -385,10 +385,77 @@ Ships with defaults: `diagnose`, `why-failing`, `what-changed`,
 `suggest-fix`. Each is a small YAML file in the cruster repo's
 `assets/prompts/` — they're examples as much as features.
 
-**Pricing:** the mechanism, all shipped defaults, and any number
-of user-authored prompts are **free**. **Team tier** adds
-team-shared prompt libraries that sync via the team config service,
-so an org standardizes on one debugging vocabulary.
+**Pricing:** prompt actions are a **Pro feature**. The mechanism,
+all shipped defaults, and unlimited user-authored prompts unlock
+with Pro. **Team tier** adds team-shared prompt libraries that sync
+via the team config service, so an org standardizes on one
+debugging vocabulary. Free users see prompt actions in the palette
+and footer with a "Pro" badge; activating one prompts an upgrade
+flow instead of writing to the clipboard. We never show a broken
+state.
+
+**e) Diagnostic export to markdown** (Pro)
+
+The asynchronous counterpart to prompt actions. When you don't want
+to paste into an agent right now — you want a sharable artifact for
+an incident ticket, a postmortem, a Slack thread, or a Claude Code
+session where you're loading files instead of clipboards — cruster
+exports the current resource's full diagnostic bundle as a single
+markdown file.
+
+TUI keybind: `E d` (export diagnostic). CLI: `cruster export
+pod/foo` (writes `./pod-foo-2026-05-15T15-30-00Z.md` by default;
+`-o <path>` overrides; `-` writes to stdout).
+
+The .md file is structured for both humans and LLMs to read directly:
+
+```markdown
+# Diagnostic: pod/nginx-7d8f9b in namespace prod
+**Cluster:** prod-us-east
+**Status:** CrashLoopBackOff (47 restarts, 2h13m old)
+**Generated:** 2026-05-15T15:30:00Z by cruster v0.1.0
+
+## Owner chain
+Deployment/nginx → ReplicaSet/nginx-7d8f9b → Pod/nginx-7d8f9b-xyz
+
+## Recent events (last 5)
+| Time | Type | Reason | Message |
+|---|---|---|---|
+| 15:29:51Z | Warning | BackOff | Back-off restarting failed container |
+| …
+
+## Recent logs (last 50 lines)
+```text
+2026-05-15T15:29:51Z Error: cannot connect to database
+…
+```
+
+## Related resources
+- Service `nginx-svc` (selects 0 ready pods)
+- ConfigMap `nginx-config` (last modified 12m ago)
+- Secret `db-creds` (last modified 2h ago)
+```
+
+Flags: `--tail N`, `--since DUR`, `--grep PATTERN` (control logs
+section), `--include-rollout-diff` (adds a diff vs previous
+ReplicaSet for Deployments), `--no-logs` / `--no-events` (trim
+sections you don't want).
+
+Why markdown specifically: it's the universal "shareable artifact
+that LLMs and humans both read well" format. PDFs are too rigid,
+HTML is too web-only, JSON is right for `cruster bundle` (agent
+direct ingestion) but unreadable for a human dropping a file into
+a ticket. Markdown is what Claude Code, Cursor, and every ticket
+system speak natively.
+
+Implementation note: shares the context-gathering engine with the
+prompt-actions feature and the `cruster bundle` verb. Three output
+sinks (clipboard, stdout/file as .md, stdout as NDJSON) over one
+data layer.
+
+**Pricing:** **Pro feature**. Free users attempting `cruster
+export` get the same "Pro feature → upgrade" message as the
+prompt-action paywall.
 
 ---
 
@@ -505,20 +572,29 @@ Client-side license check, offline-first:
 - Trial: 14 days, triggered by `cruster trial`, no email required,
   no credit card.
 
-**Pricing principle, post-cursor-review:** the free tier must be
-lovable enough for someone to make cruster their daily k9s
-replacement *and* feel the magic. Paywalling baseline ergonomics is
-self-defeating. Paid value lives in workflows that genuinely cost
-us money to deliver (AI workflows, multi-cluster scale, team
-features) or that buy operational maturity (GitOps integration,
-team-wide config sync, audit).
+**Pricing principle:** the free tier must be lovable enough for
+someone to make cruster their daily k9s replacement *and* enable
+the entire agent ecosystem (so agents have a reason to learn
+cruster). Paywalled features split into two buckets:
+
+1. **Convenience layer for the human-in-the-loop agent workflow** —
+   prompt actions (clipboard bridge), diagnostic export (.md
+   artifacts), theme switching, change-correlation timeline. These
+   are high-value-per-keystroke productivity tools for the SRE who
+   uses both cruster and a coding agent every day.
+2. **Capabilities with real backend cost or org-scale value** —
+   multi-cluster, GitOps visibility, team config sync, SSO, audit.
+
+The agent foundation (CLI, skills, Claude Code plugin) stays free
+because paywalling it would kill the agent ecosystem we're trying
+to seed.
 
 Pricing (initial):
 
 | Tier | Price | Includes |
 |---|---|---|
-| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, safety badges, saved workflows), default `terminal` theme only, LLM-efficient CLI, all agentskills.io skills, Claude Code plugin, prompt actions (all shipped defaults + unlimited user-defined templates) |
-| Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, theme switching + bundled theme library + community theme installation + live theme reload, advanced exports |
+| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, safety badges, saved workflows), default `terminal` theme only, LLM-efficient CLI, all agentskills.io skills, Claude Code plugin |
+| Pro | $99/year *or* $12/mo | **Prompt actions** (clipboard bridge to your agent with all shipped templates + unlimited user-defined), **diagnostic export** (`.md` files for tickets/postmortems/agent chats), multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, theme switching + bundled theme library + community theme installation + live theme reload |
 | Team | $29/mo/user (annual $290/yr) | Pro + shared team config (workflows, themes, prompt actions, safety matchers, saved queries sync via a small hosted service), SSO, audit log of cluster mutations |
 | Enterprise | Contact | Team + self-hosted license server + config sync, BYO CA, air-gapped mode (no outbound calls except apiserver), SLA |
 
@@ -578,11 +654,18 @@ Phase boundaries are gates, not week boundaries.
   output schemas.
 - Token-budget output trimming (`--budget`).
 - TUI writes `~/.cache/cruster/selection.json` on selection change.
-- **Prompt actions engine**: YAML loader, Tera template resolver,
-  lazy context gatherers (resource / cluster / events / logs /
-  selection / pane), clipboard writer (arboard), discoverability in
-  palette + action footer, hot reload, CLI parity (`cruster prompt
+- **Prompt actions engine** (Pro-gated at runtime): YAML loader,
+  Tera template resolver, lazy context gatherers (resource /
+  cluster / events / logs / selection / pane), clipboard writer
+  (arboard), discoverability in palette + action footer with Pro
+  badge for free users, hot reload, CLI parity (`cruster prompt
   <name>`). Ships with 7 default prompts in `assets/prompts/`.
+- **Diagnostic export** (Pro-gated): TUI keybind `E d` and CLI
+  `cruster export` produce a structured `.md` file with resource
+  identity, owner chain, recent events, tail of logs, and related
+  resources. Flags for tail/since/grep + sections to include.
+  Shares the context-gathering engine with the prompt-actions
+  feature and `cruster bundle`.
 - Five agentskills.io skills in `skills/` (debug-pod,
   rollout-status, what-changed, service-dark, resource-bundle).
 - Claude Code plugin in `plugins/claude-code/`: slash commands
@@ -626,13 +709,21 @@ To ship v1 publicly, all of these must hold:
     calls and ≥ 5,000 tokens.
   This is the headline number for marketing and the empirical
   test that Pillar 3 actually delivers.
-- **Prompt-action workflow.** From the logs view of a failing pod,
-  the user presses the `diagnose` keybind, pastes into Claude Code,
-  and gets a useful answer in under 15 seconds total (TUI keypress
-  → clipboard → paste → response). The shipped `diagnose` prompt
-  includes resource identity, recent events, and the last 50 lines
-  of the focused logs pane. Validated against at least Claude Code
-  and one other agent.
+- **Prompt-action workflow** (Pro-licensed). From the logs view of
+  a failing pod, the user presses the `diagnose` keybind, pastes
+  into Claude Code, and gets a useful answer in under 15 seconds
+  total (TUI keypress → clipboard → paste → response). The shipped
+  `diagnose` prompt includes resource identity, recent events, and
+  the last 50 lines of the focused logs pane. Validated against at
+  least Claude Code and one other agent. Free users attempting the
+  keybind get a clear "Pro feature" message and an upgrade link.
+- **Diagnostic export** (Pro-licensed). `cruster export pod/foo`
+  produces a `.md` file that is well-formed, opens cleanly in any
+  markdown viewer, and is useful enough to drop directly into an
+  incident ticket or a Claude Code chat without further editing.
+  Test: pasting the .md into Claude Code produces an answer at
+  least as good as the equivalent `cruster bundle` JSON would, in
+  fewer pasted tokens.
 - The Claude Code plugin flow (highlight pod in TUI →
   `/cruster:debug` in Claude Code) produces a useful answer in
   under 5 seconds end-to-end.
