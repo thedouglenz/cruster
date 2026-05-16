@@ -568,6 +568,7 @@ dependencies = [
  "clap",
  "cruster-core",
  "cruster-kube",
+ "cruster-tui",
  "futures",
  "is-terminal",
  "k8s-openapi",

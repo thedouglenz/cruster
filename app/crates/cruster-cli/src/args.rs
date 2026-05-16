@@ -57,6 +57,30 @@ pub enum Command {
     HelpJson,
     /// Structural diff between two resources.
     Diff(DiffArgs),
+    /// Theme inspection and (Phase 5) installation.
+    Theme(ThemeArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct ThemeArgs {
+    #[command(subcommand)]
+    pub sub: ThemeSub,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ThemeSub {
+    /// List bundled theme names.
+    List,
+    /// Print resolved colors for a bundled theme.
+    Preview {
+        /// Theme name (e.g. `dark`, `gruvbox`).
+        name: String,
+    },
+    /// Install a theme from a URL (Pro feature; not implemented in v1).
+    Install {
+        /// URL of the theme TOML file.
+        url: String,
+    },
 }
 
 #[derive(Debug, Parser)]

@@ -7,6 +7,7 @@ pub mod get;
 pub mod help_json;
 pub mod logs;
 pub mod schema;
+pub mod theme;
 
 use crate::args::{Cli, Command};
 
@@ -19,5 +20,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Schema(args) => schema::run(&cli, args).await,
         Command::HelpJson => help_json::run().await,
         Command::Diff(args) => diff::run(&cli, args).await,
+        Command::Theme(args) => theme::run(&cli, args).await,
     }
 }

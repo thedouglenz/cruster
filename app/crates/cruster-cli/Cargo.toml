@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 cruster-core = { workspace = true }
 cruster-kube = { workspace = true }
+cruster-tui = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
