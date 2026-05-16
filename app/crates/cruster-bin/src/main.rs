@@ -1,5 +1,7 @@
 use anyhow::Context;
-use cruster_kube::{Deployments, Pods, ResourceKind, ResourceStore, StoreRegistry, run_watcher};
+use cruster_kube::{
+    Deployments, Pods, ResourceKind, ResourceStore, Services, StoreRegistry, run_watcher,
+};
 use cruster_tui::App;
 use kube::Client;
 use tracing_subscriber::EnvFilter;
@@ -17,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
     // Spawn one watcher per kind. (More kinds wired up in subsequent tasks.)
     spawn_watcher::<Pods>(client.clone(), registry.pods.clone());
     spawn_watcher::<Deployments>(client.clone(), registry.deployments.clone());
+    spawn_watcher::<Services>(client.clone(), registry.services.clone());
 
     let mut app = App::new(registry);
     app.run().await
