@@ -64,6 +64,7 @@ pub struct App {
     context: String,
     environment: Environment,
     read_only: bool,
+    pending_open_relationships: bool,
     toast: Option<String>,
 }
 
@@ -91,6 +92,7 @@ impl App {
             context,
             environment,
             read_only,
+            pending_open_relationships: false,
             toast: None,
         }
     }
@@ -375,6 +377,13 @@ impl App {
                 self.open_history_palette();
                 LoopState::Continue
             }
+            KeyCode::Char('r') => {
+                // Resolving relationships needs registry snapshots
+                // (async). Defer to the run loop, which runs the
+                // resolver between input poll and draw.
+                self.pending_open_relationships = true;
+                LoopState::Continue
+            }
             _ => self.current_view.handle_key(key),
         }
     }
@@ -512,6 +521,10 @@ impl App {
     ) -> anyhow::Result<()> {
         loop {
             self.current_view.refresh(&self.registry).await;
+            if self.pending_open_relationships {
+                self.pending_open_relationships = false;
+                self.open_relationships_overlay().await;
+            }
             terminal.draw(|f| self.render_full(f))?;
 
             if event::poll(Duration::from_millis(100))? {
@@ -522,6 +535,24 @@ impl App {
                 }
             }
         }
+    }
+
+    async fn open_relationships_overlay(&mut self) {
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        let related = cruster_kube::related(&key, &self.registry).await;
+        if related.is_empty() {
+            self.toast = Some(format!(
+                "no relationships discovered for {}/{}",
+                key.kind, key.name
+            ));
+            return;
+        }
+        self.overlay = Some(Box::new(
+            crate::overlays::relationships::RelationshipsOverlay::new(key.to_string(), related),
+        ));
     }
 
     fn render_full(&self, frame: &mut Frame<'_>) {
