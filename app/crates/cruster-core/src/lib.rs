@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 /// Uniquely identifies a Kubernetes resource within a cluster.
 ///
 /// `namespace` is `None` for cluster-scoped resources (Node, Namespace, etc.).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// `Ord` is derived (kind, then namespace, then name) so the type can key
+/// a `BTreeMap` for ordered iteration in resource views.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ResourceKey {
     pub kind: String,
     pub namespace: Option<String>,
