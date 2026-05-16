@@ -2,10 +2,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
 

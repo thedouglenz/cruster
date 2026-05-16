@@ -67,7 +67,11 @@ impl ResourceView for ConfigMapsView {
                     Cell::from(metadata_age(&cm.metadata)),
                 ]);
                 if i == self.selected {
-                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    row.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     row
                 }

@@ -497,10 +497,7 @@ impl App {
                 OverlayResult::Invoke(id) => {
                     if id == "port-forward-submit" {
                         // Pull the overlay's payload before dropping it.
-                        let payload = self
-                            .overlay
-                            .as_ref()
-                            .and_then(|o| o.port_forward_payload());
+                        let payload = self.overlay.as_ref().and_then(|o| o.port_forward_payload());
                         self.overlay = None;
                         if let Some((pod_key, mapping)) = payload {
                             self.submit_port_forward(pod_key, mapping);
@@ -633,10 +630,7 @@ impl App {
     fn submit_port_forward(&mut self, pod_key: ResourceKey, mapping: String) {
         match PortForward::start(pod_key.clone(), mapping.clone()) {
             Ok(pf) => {
-                self.toast = Some(format!(
-                    "forwarded {} → pod/{}",
-                    pf.mapping, pod_key.name
-                ));
+                self.toast = Some(format!("forwarded {} → pod/{}", pf.mapping, pod_key.name));
                 self.port_forwards.add(pf);
             }
             Err(e) => {
@@ -737,17 +731,11 @@ impl App {
                 .split(area);
             self.current_view.render(frame);
             if self.describe_pane.is_open() {
-                self.describe_pane.render(
-                    frame,
-                    chunks[1],
-                    self.pane_focus == PaneFocus::Describe,
-                );
+                self.describe_pane
+                    .render(frame, chunks[1], self.pane_focus == PaneFocus::Describe);
             } else {
-                self.logs_pane.render(
-                    frame,
-                    chunks[1],
-                    self.pane_focus == PaneFocus::Logs,
-                );
+                self.logs_pane
+                    .render(frame, chunks[1], self.pane_focus == PaneFocus::Logs);
             }
         } else {
             self.current_view.render(frame);

@@ -63,7 +63,11 @@ impl ResourceView for ServicesView {
                     Cell::from(svc_ports(svc)),
                 ]);
                 if i == self.selected {
-                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    row.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     row
                 }

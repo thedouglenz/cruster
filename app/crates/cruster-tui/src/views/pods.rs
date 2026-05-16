@@ -93,7 +93,11 @@ impl ResourceView for PodsView {
                     Cell::from(pod_restarts(pod).to_string()),
                 ]);
                 if i == self.selected {
-                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    row.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     row
                 }

@@ -47,8 +47,8 @@ impl ResourceView for NamespacesView {
     fn render(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
 
-        let header = Row::new(vec!["", "NAME", "STATUS", "AGE"])
-            .style(Style::default().fg(Color::DarkGray));
+        let header =
+            Row::new(vec!["", "NAME", "STATUS", "AGE"]).style(Style::default().fg(Color::DarkGray));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -63,7 +63,11 @@ impl ResourceView for NamespacesView {
                     Cell::from(metadata_age(&ns.metadata)),
                 ]);
                 if i == self.selected {
-                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    row.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     row
                 }

@@ -63,7 +63,11 @@ impl ResourceView for NodesView {
                     Cell::from(node_os_image(node)),
                 ]);
                 if i == self.selected {
-                    row.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    row.style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     row
                 }
