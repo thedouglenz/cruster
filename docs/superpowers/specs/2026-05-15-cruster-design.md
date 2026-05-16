@@ -171,19 +171,38 @@ invokes the appropriate MCP tool(s) and asks the model to synthesize.
 
 ## Architecture
 
-Rust workspace, four crates plus the binary:
+This is a **monorepo**. The Rust app and the marketing site live in
+the same git repository so docs, spec changes, licensing keys, and
+website copy can travel in the same commits as the code they
+describe.
+
+Top-level layout:
 
 ```
 cruster/
-├── Cargo.toml                  # workspace
-├── crates/
-│   ├── cruster-core/           # config, themes, keymap, shared types
-│   ├── cruster-kube/           # kube-rs wrapper: watch streams, resource store, action verbs
-│   ├── cruster-tui/            # ratatui app: views, layouts, command palette, input router
-│   ├── cruster-mcp/            # MCP server, tool implementations, companion socket protocol
-│   └── cruster-plugin/         # Claude Code plugin files (slash commands, prompts)
-└── crates/cruster-bin/         # binary that wires everything together
+├── README.md                   # monorepo overview
+├── docs/                       # specs, plans, design notes
+├── app/                        # the Rust TUI workspace
+│   ├── Cargo.toml              # cargo workspace manifest
+│   ├── rust-toolchain.toml
+│   ├── crates/
+│   │   ├── cruster-core/       # config, themes, keymap, shared types
+│   │   ├── cruster-kube/       # kube-rs wrapper: watch streams, resource store, action verbs
+│   │   ├── cruster-tui/        # ratatui app: views, layouts, command palette, input router
+│   │   ├── cruster-mcp/        # MCP server, tool implementations, companion socket protocol
+│   │   ├── cruster-plugin/     # Claude Code plugin files (slash commands, prompts)
+│   │   └── cruster-bin/        # binary that wires everything together
+│   └── benches/                # perf harness
+├── web/                        # marketing site (Next.js or Astro; chosen in its own plan)
+└── .github/
+    └── workflows/
+        └── ci.yml              # runs app + web checks
 ```
+
+`app/` is a self-contained cargo workspace — `cd app && cargo build`
+must work without referencing the parent. `web/` is similarly
+self-contained. The root holds only cross-cutting things: docs,
+shared README, CI orchestration, license headers.
 
 **Data flow at runtime:**
 
