@@ -18,10 +18,24 @@ standard, supported by Claude Code, Cursor, Codex, Gemini CLI, Goose,
 GitHub Copilot, and 25+ other agents), plus a richer Claude Code
 plugin layered on top.
 
-It is not a research toy and it is not an AI-debugger product. It is the
-fastest, safest way to understand what changed in a cluster and what to
-do next — usable by hand at the keyboard, drivable by any modern coding
-agent.
+It is not a research toy and it is not an AI-debugger product —
+cruster contains no LLM client of its own and never makes outbound
+model calls. It is the fastest, safest way to understand what
+changed in a cluster and what to do next, usable two ways:
+
+- **By hand at the keyboard** (TUI), where it beats k9s on speed
+  and incident-solving ergonomics.
+- **As a tool an agent shells out to** (CLI), where it beats
+  kubectl on density, round-trip count, schema stability, and
+  noise. Every SRE who uses Claude Code, Cursor, Codex, etc. has
+  the same need: instrument their agent with cluster access and
+  let it rip. Today they wrap kubectl, which is a verbose,
+  unstructured, agent-hostile interface. Cruster is the CLI those
+  agents wish you'd give them.
+
+k9s does not compete here — it's TUI-only, with no CLI for an
+agent to call. On the agent-tooling axis, the competitor is kubectl,
+and beating it is a structural win, not a hard fight.
 
 ## Goals
 
@@ -59,14 +73,14 @@ agent.
   Not marketed on the Pro page until shipped.
 - Cost overlay, observability fusion (Prometheus / OpenCost).
   Deferred to v2+.
-- AI debugging *features built into the TUI itself.* The TUI
-  never makes an outbound model call — it's pure local navigation.
-  The primary AI path is the user's own coding agent shelling out
-  to cruster's CLI. Pro tier *additionally* ships a `cruster
-  diagnose` CLI verb (Phase 4+) that calls a hosted Claude
-  endpoint for users who want an answer without going through an
-  agent — this is opt-in, CLI-only, never invoked from the TUI,
-  and not on by default.
+- Any LLM client of our own. Cruster never makes an outbound
+  model call — not from the TUI, not from the CLI, not anywhere.
+  All AI happens in the user's coding agent (Claude Code, Cursor,
+  Codex, …), which invokes cruster's CLI as a tool. This means we
+  don't run an LLM proxy, don't meter tokens, don't store user
+  data, and don't take on AI safety/abuse surface. The agent the
+  user already pays for does the synthesis; cruster gives it
+  better raw material than kubectl ever could.
 - Cluster mutation beyond what parity demands: edit YAML, scale,
   delete, exec, port-forward. No applies, no kustomize, no helm
   install in v1. GitOps *visibility* (read-side: rollout status,
@@ -192,9 +206,21 @@ command palette (`Ctrl+P` / `Cmd+P`) over every action, keymap presets
 
 ### Pillar 3: Agent-native (Claude Code first)
 
-The decision: **no MCP server**. MCP is overkill when the agent already
-has a shell. Cruster is just a CLI that emits structured output, plus
-the skills that teach agents how to use it well.
+The bet: every SRE and platform engineer worth hiring already has
+a coding agent and wants to instrument it with cluster access. They
+end up wrapping `kubectl`, which is unstructured, verbose, and
+chatty — multiple round trips for what an agent reasons about as
+one question, raw apiserver objects bloated with `managedFields` and
+status timestamps, no schemas, no token budgets, no pre-decomposed
+analysis. Cruster's CLI is purpose-built to be the better tool. On
+this axis the real competitor is **kubectl**, not k9s — k9s has no
+CLI at all, so it loses by default.
+
+The decision: **no MCP server**, **no embedded LLM**. MCP is overkill
+when the agent already has a shell. An LLM client is wrong because
+the user's agent already does that job. Cruster is just a CLI that
+emits agent-shaped output, plus the skills that teach agents how to
+use it well.
 
 Three deliverables, all shipped in v1.
 
@@ -398,9 +424,9 @@ Pricing (initial):
 | Tier | Price | Includes |
 |---|---|---|
 | Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, all themes, safety badges, saved workflows), LLM-efficient CLI, all agentskills.io skills, Claude Code plugin |
-| Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, `cruster diagnose` (opt-in hosted-Claude synthesis for users without a coding agent), advanced exports |
+| Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, advanced exports |
 | Team | $29/mo/user (annual $290/yr) | Pro + shared team config (workflows, themes, safety matchers, saved queries sync via a small hosted service), SSO, audit log of cluster mutations |
-| Enterprise | Contact | Team + self-hosted license server + config sync, BYO CA, BYO LLM endpoint (or air-gapped no-AI mode), SLA |
+| Enterprise | Contact | Team + self-hosted license server + config sync, BYO CA, air-gapped mode (no outbound calls except apiserver), SLA |
 
 Notes:
 - **Annual is the default offer; monthly exists for evaluation.**
@@ -408,10 +434,11 @@ Notes:
   $99/year offer converts better than $15/month.
 - **Multi-cluster is not marketed on the Pro page until it ships.**
   Avoiding the credibility own-goal.
-- **AI workflows are usage-capped, not metered.** Generous monthly
-  cap on hosted LLM calls; agents using their own keys/Claude Code
-  are unaffected. We never meter incident debugging at the per-call
-  level — that feels terrible during an outage.
+- **No AI usage metering of any kind.** Cruster does not run an
+  LLM, does not relay tokens, and does not charge per call. All AI
+  happens in the user's agent. This is a deliberate scope choice:
+  it keeps our pricing simple, removes an entire compliance
+  surface, and aligns incentives with our actual buyers.
 
 ## MVP scope (6 weeks)
 
@@ -489,9 +516,17 @@ To ship v1 publicly, all of these must hold:
 - A coding agent with no special tooling beyond `cruster` on `$PATH`
   and the agentskills.io skills installed can answer "why is pod X
   in namespace Y failing?" on a cluster it has never seen before,
-  using only shell calls to `cruster`. Validates Pillar 3 against
-  at least two agents (Claude Code + one other from the
-  agentskills.io showcase, e.g. Cursor or Codex).
+  using only shell calls to `cruster`. Validated against at least
+  two agents (Claude Code + one other from the agentskills.io
+  showcase, e.g. Cursor or Codex).
+- **Cruster vs kubectl benchmark.** On the staged "why is pod X
+  failing" scenario, an agent reaches a correct answer with:
+  - **Cruster path:** ≤ 3 CLI calls, ≤ 1,500 tokens of returned
+    data, ≤ 8 seconds wall-clock.
+  - **Kubectl path** (same agent, kubectl only): typically ≥ 6
+    calls and ≥ 5,000 tokens.
+  This is the headline number for marketing and the empirical
+  test that Pillar 3 actually delivers.
 - The Claude Code plugin flow (highlight pod in TUI →
   `/cruster:debug` in Claude Code) produces a useful answer in
   under 5 seconds end-to-end.
