@@ -13,8 +13,8 @@ pub async fn run(_cli: &Cli, args: &ThemeArgs) -> anyhow::Result<()> {
             Ok(())
         }
         ThemeSub::Preview { name } => {
-            let theme = Theme::embedded(name)
-                .ok_or_else(|| anyhow::anyhow!("unknown theme: {name}"))?;
+            let theme =
+                Theme::embedded(name).ok_or_else(|| anyhow::anyhow!("unknown theme: {name}"))?;
             // Pretty-print as JSON for easy diffing across themes.
             let json = serde_json::json!({
                 "name": theme.name,
@@ -35,9 +35,7 @@ pub async fn run(_cli: &Cli, args: &ThemeArgs) -> anyhow::Result<()> {
             Ok(())
         }
         ThemeSub::Install { url } => {
-            anyhow::bail!(
-                "theme install is a Pro feature (not yet wired in v1). Requested: {url}"
-            );
+            anyhow::bail!("theme install is a Pro feature (not yet wired in v1). Requested: {url}");
         }
     }
 }

@@ -40,6 +40,7 @@ cargo test --workspace
 | `H` | recents palette (recency × frequency ranked) |
 | `r` | relationships (jump to related resource — owner, mounted cm/secret, service, node) |
 | `W` | run a saved workflow from `~/.config/cruster/workflows/*.toml` |
+| `T` | theme palette (9 bundled themes; switching to non-default is Pro) |
 
 ### Switching kinds
 Type `:` to enter command mode, then a kind alias and `Enter`.

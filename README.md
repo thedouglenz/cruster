@@ -11,19 +11,16 @@ This repository is a monorepo:
 
 ## Status
 
-Phase 3B (task-first navigation) complete: relationship resolver
-(Pod → owner / mounted cm + secret / services that select / node;
-Service → selected pods; Deployment → owned pods; Node → scheduled
-pods), `r` opens a relationships overlay; `cruster diff <a> <b>` does
-structural diff over two resources; saved investigative workflows
-(TOML files in `~/.config/cruster/workflows/`) run via `W` and chain
-view switches + filter applications.
+Phase 3C (theme engine) complete: 9 bundled themes (terminal/dark/
+light/solarized-dark/solarized-light/monokai/gruvbox/tokyonight/
+catppuccin), TOML-based, `T` opens theme palette in the TUI, switch
+gated by Pro tier (Free always lands on `terminal`). `cruster theme
+list/preview/install` CLI verbs (install stubbed for Phase 5).
 
-Plus everything from earlier phases: Phase 2A TUI parity, Phase 2B
-LLM-efficient CLI, Phase 3A ergonomics (palette, search, safety,
-copy-as-kubectl, history).
+Plus everything earlier: Phase 2A TUI parity, Phase 2B LLM-efficient
+CLI, Phase 3A ergonomics, Phase 3B task-first navigation.
 
-Next: Phase 3C (theme engine + bundled themes — paid feature gate).
+Next: Phase 3D (keymap presets + named layouts).
 
 ## Quick start
 

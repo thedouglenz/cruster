@@ -75,9 +75,7 @@ impl ThemeColor {
             "lightblue" => Color::LightBlue,
             "lightmagenta" => Color::LightMagenta,
             "lightcyan" => Color::LightCyan,
-            hex if hex.starts_with('#') && hex.len() == 7 => {
-                parse_hex(hex).unwrap_or(Color::Reset)
-            }
+            hex if hex.starts_with('#') && hex.len() == 7 => parse_hex(hex).unwrap_or(Color::Reset),
             _ => Color::Reset,
         }
     }

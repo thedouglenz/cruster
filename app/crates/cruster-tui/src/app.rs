@@ -8,7 +8,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use cruster_core::{Environment, tier::Tier};
+use cruster_core::{tier::Tier, Environment};
 use cruster_kube::StoreRegistry;
 use kube::Client;
 use ratatui::backend::CrosstermBackend;
@@ -716,8 +716,8 @@ impl App {
             line.push_str(sep);
             line.push_str(&p);
         }
-        let bar = Paragraph::new(line)
-            .style(Style::default().bg(self.theme.footer_bg.as_ratatui()));
+        let bar =
+            Paragraph::new(line).style(Style::default().bg(self.theme.footer_bg.as_ratatui()));
         let rect = Rect {
             x: area.x,
             y: area.y + area.height.saturating_sub(2),
@@ -742,13 +742,13 @@ impl App {
                 "port-forward pod/{}: {}_ (esc cancels)",
                 prompt.pod_key.name, prompt.buffer
             );
-            let bar = Paragraph::new(line)
-                .style(Style::default().bg(self.theme.command_bg.as_ratatui()));
+            let bar =
+                Paragraph::new(line).style(Style::default().bg(self.theme.command_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         } else if self.command.is_active() {
             let line = format!(":{}", self.command.buffer());
-            let bar = Paragraph::new(line)
-                .style(Style::default().bg(self.theme.command_bg.as_ratatui()));
+            let bar =
+                Paragraph::new(line).style(Style::default().bg(self.theme.command_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         } else if let Some(msg) = &self.toast {
             let bar = Paragraph::new(msg.clone())
@@ -756,8 +756,8 @@ impl App {
             frame.render_widget(bar, bottom);
         } else if !self.port_forwards.is_empty() {
             let line = format!(" port-forwards: {} active ", self.port_forwards.len());
-            let bar = Paragraph::new(line)
-                .style(Style::default().bg(self.theme.search_bg.as_ratatui()));
+            let bar =
+                Paragraph::new(line).style(Style::default().bg(self.theme.search_bg.as_ratatui()));
             frame.render_widget(bar, bottom);
         }
     }
