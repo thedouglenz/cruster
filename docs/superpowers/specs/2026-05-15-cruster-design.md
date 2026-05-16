@@ -303,10 +303,100 @@ The plugin reuses the agentskills.io skills internally but adds
 Claude-Code-only conveniences: hooks, settings, agents (per the
 Claude Code plugin format).
 
+**d) Prompt actions — clipboard bridge from the TUI to your agent**
+
+The TUI's own contribution to Pillar 3. Any view, any pane, can
+declare keybound **prompt actions** that turn the visible context
+into a structured prompt and copy it to the system clipboard.
+
+The workflow: you're looking at a pod's logs, you can see the error,
+you press `P d` (leader `P` + `d` for *diagnose*). A toast confirms
+`Copied 1.2 KB prompt — paste into your agent`. You switch to your
+Claude Code / Cursor / Codex window, paste, and the agent has
+everything it needs: the resource identity, the cluster, the recent
+events, the visible log lines, framed in a question. No socket, no
+daemon, no API key, no integration ceremony. The user is the
+transport.
+
+This is the **reusable abstraction** that anything in the TUI can
+plug into. It's not hard-coded per view — adding a new prompt
+action is dropping a YAML file in `~/.config/cruster/prompts/`,
+no Rust changes needed.
+
+Definition format:
+
+```yaml
+name: diagnose
+description: Diagnose the current resource using its events + recent logs
+applies_to:
+  kinds: [Pod, Deployment, Service]
+  views: [list, detail, logs, events]
+key: "P d"                     # leader chord, configurable
+template: |
+  Diagnose what's wrong with {{ resource.kind | lower }}/{{ resource.name }}
+  in namespace {{ resource.namespace }} on cluster {{ cluster.name }}.
+
+  Current status: {{ resource.status_summary }}
+
+  Recent events:
+  {{ events.recent(5) | yaml }}
+
+  Recent logs (last 50 lines from the focused logs pane):
+  ```
+  {{ logs.tail(50) }}
+  ```
+```
+
+Mechanism:
+
+- **Template language: Tera** (Rust-native, Jinja-style). Familiar,
+  no new DSL to learn.
+- **Context variables** available to every template:
+  - `resource` — kind, name, namespace, status_summary, age, labels,
+    annotations, owner_chain, raw (full JSON if needed)
+  - `cluster` — name, context, kube version
+  - `events` — `recent(n)`, `by_resource`
+  - `logs` — `tail(n)`, `since(duration)`, `grep(pattern)`,
+    `visible` (exactly what's rendered in the focused logs pane)
+  - `selection` — if the user has highlighted a range of lines,
+    those exact lines
+  - `pane` — content of the currently focused pane (for views with
+    no obvious resource — e.g. events stream)
+- **Lazy resolution.** Only context the template *references* is
+  gathered. `{{ logs.tail(50) }}` triggers a log fetch; templates
+  that don't mention logs don't pay for one.
+- **Clipboard write** via `arboard` (cross-platform, no Electron
+  bullshit). On Linux without X11/Wayland, falls back to writing
+  to a tmp file and showing the path.
+- **Discoverability everywhere.**
+  - Appears in the command palette (`Ctrl+P` → "prompt: diagnose").
+  - Appears in the inline action footer when the current view +
+    selection matches `applies_to`.
+  - `cruster prompts list` enumerates all defined prompts.
+- **CLI parity.** `cruster prompt diagnose pod/nginx -n default`
+  resolves the same template and writes the prompt to stdout
+  (`--clipboard` to copy instead). Means agents, shell pipelines,
+  and TUI users hit the same definitions.
+- **Hot reload.** Edit a prompt file, save, the new version is
+  available on next keypress without restart.
+
+Ships with defaults: `diagnose`, `why-failing`, `what-changed`,
+`summarize-events`, `compare-with-previous-rollout`, `explain-yaml`,
+`suggest-fix`. Each is a small YAML file in the cruster repo's
+`assets/prompts/` — they're examples as much as features.
+
+**Pricing:** the mechanism, all shipped defaults, and any number
+of user-authored prompts are **free**. **Team tier** adds
+team-shared prompt libraries that sync via the team config service,
+so an org standardizes on one debugging vocabulary.
+
+---
+
 **Why this beats MCP for a local CLI:** no server lifecycle, no
 transport, no stale connections, no separate authn surface. Just a
 binary the agent already has on `$PATH`, with output designed to
-land cleanly in a context window.
+land cleanly in a context window — plus a TUI that makes the
+human-in-the-loop path frictionless.
 
 ## Architecture
 
@@ -427,9 +517,9 @@ Pricing (initial):
 
 | Tier | Price | Includes |
 |---|---|---|
-| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, safety badges, saved workflows), default `terminal` theme only, LLM-efficient CLI, all agentskills.io skills, Claude Code plugin |
+| Free | $0 | Single cluster, full TUI ergonomics (palette, faceted search, layouts, safety badges, saved workflows), default `terminal` theme only, LLM-efficient CLI, all agentskills.io skills, Claude Code plugin, prompt actions (all shipped defaults + unlimited user-defined templates) |
 | Pro | $99/year *or* $12/mo | Multi-cluster (when shipped), GitOps visibility (Helm / Argo / Flux rollout state, desired-vs-live diff), change-correlation timeline, theme switching + bundled theme library + community theme installation + live theme reload, advanced exports |
-| Team | $29/mo/user (annual $290/yr) | Pro + shared team config (workflows, themes, safety matchers, saved queries sync via a small hosted service), SSO, audit log of cluster mutations |
+| Team | $29/mo/user (annual $290/yr) | Pro + shared team config (workflows, themes, prompt actions, safety matchers, saved queries sync via a small hosted service), SSO, audit log of cluster mutations |
 | Enterprise | Contact | Team + self-hosted license server + config sync, BYO CA, air-gapped mode (no outbound calls except apiserver), SLA |
 
 Notes:
@@ -488,6 +578,11 @@ Phase boundaries are gates, not week boundaries.
   output schemas.
 - Token-budget output trimming (`--budget`).
 - TUI writes `~/.cache/cruster/selection.json` on selection change.
+- **Prompt actions engine**: YAML loader, Tera template resolver,
+  lazy context gatherers (resource / cluster / events / logs /
+  selection / pane), clipboard writer (arboard), discoverability in
+  palette + action footer, hot reload, CLI parity (`cruster prompt
+  <name>`). Ships with 7 default prompts in `assets/prompts/`.
 - Five agentskills.io skills in `skills/` (debug-pod,
   rollout-status, what-changed, service-dark, resource-bundle).
 - Claude Code plugin in `plugins/claude-code/`: slash commands
@@ -531,6 +626,13 @@ To ship v1 publicly, all of these must hold:
     calls and ≥ 5,000 tokens.
   This is the headline number for marketing and the empirical
   test that Pillar 3 actually delivers.
+- **Prompt-action workflow.** From the logs view of a failing pod,
+  the user presses the `diagnose` keybind, pastes into Claude Code,
+  and gets a useful answer in under 15 seconds total (TUI keypress
+  → clipboard → paste → response). The shipped `diagnose` prompt
+  includes resource identity, recent events, and the last 50 lines
+  of the focused logs pane. Validated against at least Claude Code
+  and one other agent.
 - The Claude Code plugin flow (highlight pod in TUI →
   `/cruster:debug` in Claude Code) produces a useful answer in
   under 5 seconds end-to-end.
