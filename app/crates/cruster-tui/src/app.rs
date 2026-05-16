@@ -245,6 +245,13 @@ impl App {
             self.toast = Some("nothing selected".into());
             return;
         };
+        if !self.current_view.selected_can_exec() {
+            self.toast = Some(format!(
+                "exec unavailable: {} is not a running pod with a ready container",
+                key.name
+            ));
+            return;
+        }
         if let Err(e) = crate::actions::exec::exec_into(&key) {
             self.toast = Some(format!("exec failed: {e}"));
         }

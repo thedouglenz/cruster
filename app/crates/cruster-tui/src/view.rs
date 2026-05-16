@@ -42,4 +42,13 @@ pub trait ResourceView: Send {
     fn selected_key(&self) -> Option<ResourceKey> {
         None
     }
+
+    /// Whether the currently selected resource can be `kubectl exec`'d
+    /// into. Default `false`. PodsView overrides and returns `true`
+    /// only when the pod is in the Running phase with at least one
+    /// ready container — calling kubectl exec on a Completed,
+    /// CrashLoopBackOff, Pending, etc. pod fails messily.
+    fn selected_can_exec(&self) -> bool {
+        false
+    }
 }

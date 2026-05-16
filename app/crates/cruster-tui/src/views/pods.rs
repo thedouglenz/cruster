@@ -136,6 +136,19 @@ impl ResourceView for PodsView {
     fn selected_key(&self) -> Option<ResourceKey> {
         self.snapshot.get(self.selected).map(|(k, _)| k.clone())
     }
+
+    fn selected_can_exec(&self) -> bool {
+        let Some((_, pod)) = self.snapshot.get(self.selected) else {
+            return false;
+        };
+        pod_phase(pod) == "Running"
+            && pod
+                .status
+                .as_ref()
+                .and_then(|s| s.container_statuses.as_ref())
+                .map(|cs| cs.iter().any(|c| c.ready))
+                .unwrap_or(false)
+    }
 }
 
 fn pod_phase(pod: &Pod) -> String {
