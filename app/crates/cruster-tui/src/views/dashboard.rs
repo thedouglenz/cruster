@@ -233,16 +233,14 @@ impl ResourceView for DashboardView {
             KeyCode::Char('G') | KeyCode::End => {
                 self.selected = self.config.pins.len().saturating_sub(1);
             }
-            KeyCode::Char('x') => {
-                if !self.config.pins.is_empty() {
-                    self.config.remove(self.selected);
-                    let _ = self.config.save();
-                    if self.selected >= self.config.pins.len() && self.selected > 0 {
-                        self.selected -= 1;
-                    }
-                    for sample in self.history.iter_mut() {
-                        sample.pin_values.clear();
-                    }
+            KeyCode::Char('x') if !self.config.pins.is_empty() => {
+                self.config.remove(self.selected);
+                let _ = self.config.save();
+                if self.selected >= self.config.pins.len() && self.selected > 0 {
+                    self.selected -= 1;
+                }
+                for sample in self.history.iter_mut() {
+                    sample.pin_values.clear();
                 }
             }
             KeyCode::Enter => {
