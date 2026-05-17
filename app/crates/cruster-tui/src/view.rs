@@ -55,4 +55,12 @@ pub trait ResourceView: Send {
     /// Apply a search/filter. Default: ignored. Per-view implementations
     /// retain the filter and apply it during `refresh`.
     fn set_filter(&mut self, _filter: crate::overlays::search::Filter) {}
+
+    /// A view may request that the app switch to a different view
+    /// after `handle_key` returns — e.g. the dashboard's "open this
+    /// pin in its kind view" on Enter. The app calls this once per
+    /// key event and consumes the result. Default: never.
+    fn take_pending_view_switch(&mut self) -> Option<&'static str> {
+        None
+    }
 }
