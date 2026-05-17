@@ -20,8 +20,8 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Paragraph, Sparkline};
 use ratatui::Frame;
 
 use crate::app::LoopState;
@@ -32,6 +32,12 @@ use crate::view::ResourceView;
 
 const HISTORY_CAP: usize = 60;
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Pin tile cell size. Tiles auto-flow into 1/2/3+ columns based on
+/// the pin-band width.
+const TILE_W: u16 = 24;
+const TILE_H: u16 = 6;
+const TILE_GUTTER_X: u16 = 1;
 
 #[derive(Debug, Default, Clone)]
 struct Summary {
@@ -129,21 +135,24 @@ impl DashboardView {
         self.history.push_back(sample);
     }
 
-    fn pin_history(&self, pin_idx: usize) -> Vec<u64> {
-        self.history
-            .iter()
-            .map(|s| s.pin_values.get(pin_idx).copied().unwrap_or(0))
-            .collect()
-    }
-
-    fn pins_section_lines(&self) -> u16 {
-        // Two render lines per pin (label + gauge/status), at least
-        // one line for the "no pins" hint.
+    /// How tall the pins band wants to be, given current width.
+    /// Driven by the tile grid that fits at this width.
+    fn pins_band_height(&self, available_width: u16) -> u16 {
         if self.config.pins.is_empty() {
-            return 1;
+            return 2;
         }
-        (self.config.pins.len() as u16).saturating_mul(2)
+        let cols = tile_cols_that_fit(available_width).max(1);
+        let rows = self.config.pins.len().div_ceil(cols);
+        (rows as u16).saturating_mul(TILE_H) + 1
     }
+}
+
+/// How many tile columns fit in `width` accounting for gutters.
+fn tile_cols_that_fit(width: u16) -> usize {
+    if width < TILE_W {
+        return 1;
+    }
+    ((width + TILE_GUTTER_X) / (TILE_W + TILE_GUTTER_X)).max(1) as usize
 }
 
 #[async_trait]
@@ -199,12 +208,22 @@ impl ResourceView for DashboardView {
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        let pins_h = self.pins_section_lines().max(2) + 1; // +1 for border
+        // Pins band wants as much room as its tile grid needs, but
+        // never more than half the screen — trends + summary still
+        // matter. Floor at TILE_H+1 so at least one tile-row fits.
+        let pins_h = self
+            .pins_band_height(area.width)
+            .min(area.height / 2)
+            .max(if self.config.pins.is_empty() {
+                2
+            } else {
+                TILE_H + 1
+            });
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(4), // summary band (top border + 2 lines + 1 padding)
-                Constraint::Min(6),    // trends band fills remainder
+                Constraint::Min(5),    // trends band fills remainder
                 Constraint::Length(pins_h),
             ])
             .split(area);
@@ -356,21 +375,61 @@ impl DashboardView {
             return;
         }
 
-        if inner.height == 0 {
+        if inner.height < TILE_H || inner.width < TILE_W {
+            // Fallback for terminals too narrow / short for tiles.
+            self.render_pins_compact(frame, inner, theme);
             return;
         }
 
-        // Two rows per pin: label/marker + gauge/status. If we run out
-        // of vertical space, render whatever fits.
-        let mut y = inner.y;
+        let cols = tile_cols_that_fit(inner.width);
+        let max_rows = (inner.height / TILE_H) as usize;
+        let visible = (cols * max_rows).min(self.config.pins.len());
+
+        for i in 0..visible {
+            let row = i / cols;
+            let col = i % cols;
+            let tile_rect = Rect {
+                x: inner.x + (col as u16) * (TILE_W + TILE_GUTTER_X),
+                y: inner.y + (row as u16) * TILE_H,
+                width: TILE_W,
+                height: TILE_H,
+            };
+            let pin = &self.config.pins[i];
+            let snap = self.pin_snapshots.get(i);
+            render_tile(frame, tile_rect, pin, snap, i == self.selected, theme);
+        }
+
+        if visible < self.config.pins.len() {
+            let hidden = self.config.pins.len() - visible;
+            let text = format!(" +{hidden} more (resize to show) ");
+            let w = text.len() as u16;
+            if inner.width > w {
+                frame.render_widget(
+                    Paragraph::new(text)
+                        .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+                    Rect {
+                        x: inner.x + inner.width - w,
+                        y: inner.y + inner.height.saturating_sub(1),
+                        width: w,
+                        height: 1,
+                    },
+                );
+            }
+        }
+    }
+
+    /// Narrow-terminal fallback: one line per pin.
+    fn render_pins_compact(&self, frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
+        if inner.height == 0 {
+            return;
+        }
         for (i, pin) in self.config.pins.iter().enumerate() {
-            if y + 1 >= inner.y + inner.height {
+            let y = inner.y + i as u16;
+            if y >= inner.y + inner.height {
                 break;
             }
-            let snap = self.pin_snapshots.get(i);
             let is_selected = i == self.selected;
             let marker = if is_selected { "▎" } else { " " };
-            let label = format!("{marker} {}", pin.label());
             let style = if is_selected {
                 Style::default()
                     .fg(theme.selection_fg.as_ratatui())
@@ -378,25 +437,17 @@ impl DashboardView {
             } else {
                 Style::default()
             };
-            let label_para = Paragraph::new(label).style(style);
-            let label_rect = Rect {
-                x: inner.x,
-                y,
-                width: inner.width,
-                height: 1,
-            };
-            frame.render_widget(label_para, label_rect);
-
-            let detail_rect = Rect {
-                x: inner.x + 2,
-                y: y + 1,
-                width: inner.width.saturating_sub(2),
-                height: 1,
-            };
-            if detail_rect.y < inner.y + inner.height {
-                render_pin_detail(frame, detail_rect, pin, snap, &self.pin_history(i), theme);
-            }
-            y += 2;
+            let snap = self.pin_snapshots.get(i);
+            let summary = compact_pin_summary(pin, snap);
+            frame.render_widget(
+                Paragraph::new(format!("{marker} {} — {summary}", pin.label())).style(style),
+                Rect {
+                    x: inner.x,
+                    y,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
         }
     }
 }
@@ -449,20 +500,28 @@ fn draw_trend_row(
     );
 }
 
-fn render_pin_detail(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    pin: &Pin,
-    snap: Option<&PinSnapshot>,
-    history: &[u64],
-    theme: &Theme,
-) {
+/// Per-tile visual shape. Numeric kinds (Deployment) get a car-
+/// style gauge — arc, needle, tick scale, value. Status kinds get
+/// big centered text + sub label.
+enum TileVisual {
+    Gauge {
+        percent: u8,
+        value_text: String,
+        sub: String,
+        color: Color,
+    },
+    Status {
+        big: String,
+        sub: String,
+        color: Color,
+    },
+    Missing,
+    Loading,
+}
+
+fn tile_visual(pin: &Pin, snap: Option<&PinSnapshot>, theme: &Theme) -> TileVisual {
     let Some(snap) = snap else {
-        frame.render_widget(
-            Paragraph::new("…").style(Style::default().fg(theme.muted_fg.as_ratatui())),
-            area,
-        );
-        return;
+        return TileVisual::Loading;
     };
     if snap.looked_up
         && snap.pod.is_none()
@@ -470,114 +529,59 @@ fn render_pin_detail(
         && snap.service.is_none()
         && snap.node.is_none()
     {
-        frame.render_widget(
-            Paragraph::new("(missing)")
-                .style(Style::default().fg(theme.status.failed.as_ratatui())),
-            area,
-        );
-        return;
+        return TileVisual::Missing;
     }
-
     match pin.kind.as_str() {
-        "Deployment" => {
-            render_deployment_detail(frame, area, snap.deployment.as_ref(), history, theme)
-        }
-        "Pod" => render_pod_detail(frame, area, snap.pod.as_ref(), history, theme),
-        "Service" => render_service_detail(frame, area, snap.service.as_ref(), theme),
-        "Node" => render_node_detail(frame, area, snap.node.as_ref(), history, theme),
-        other => {
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::styled(
-                        other.to_string(),
-                        Style::default().fg(theme.muted_fg.as_ratatui()),
-                    ),
-                    Span::raw("  pinned"),
-                ])),
-                area,
-            );
-        }
+        "Deployment" => deployment_visual(snap.deployment.as_ref(), theme),
+        "Pod" => pod_visual(snap.pod.as_ref(), theme),
+        "Service" => service_visual(snap.service.as_ref(), theme),
+        "Node" => node_visual(snap.node.as_ref(), theme),
+        other => TileVisual::Status {
+            big: other.into(),
+            sub: "pinned".into(),
+            color: theme.muted_fg.as_ratatui(),
+        },
     }
 }
 
-fn render_deployment_detail(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    deploy: Option<&Deployment>,
-    history: &[u64],
-    theme: &Theme,
-) {
+fn deployment_visual(deploy: Option<&Deployment>, theme: &Theme) -> TileVisual {
     let Some(d) = deploy else {
-        frame.render_widget(Paragraph::new("…"), area);
-        return;
+        return TileVisual::Loading;
     };
-    let desired = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0).max(0) as u16;
+    let desired = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0).max(0);
     let ready = d
         .status
         .as_ref()
         .and_then(|s| s.ready_replicas)
         .unwrap_or(0)
-        .max(0) as u16;
-    let ratio = if desired == 0 {
-        0.0
+        .max(0);
+    let pct = if desired == 0 {
+        0
     } else {
-        (ready as f64 / desired as f64).clamp(0.0, 1.0)
+        ((ready as f64 / desired as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as u8
     };
-
-    // Layout: gauge | text | sparkline
-    let gauge_w = area.width.min(20);
-    let text = format!("  {ready}/{desired}");
-    let text_w = text.len() as u16;
-    let spark_w = area.width.saturating_sub(gauge_w + text_w + 1);
-
-    let gauge_rect = Rect {
-        x: area.x,
-        y: area.y,
-        width: gauge_w,
-        height: 1,
-    };
-    let text_rect = Rect {
-        x: gauge_rect.x + gauge_rect.width,
-        y: area.y,
-        width: text_w,
-        height: 1,
-    };
-    let spark_rect = Rect {
-        x: text_rect.x + text_rect.width + 1,
-        y: area.y,
-        width: spark_w,
-        height: 1,
-    };
-
-    let gauge_color = if ratio >= 1.0 {
+    let color = if desired == 0 {
+        theme.muted_fg.as_ratatui()
+    } else if ready >= desired {
         theme.gauge.ok.as_ratatui()
+    } else if ready == 0 {
+        theme.gauge.danger.as_ratatui()
     } else {
         theme.gauge.warn.as_ratatui()
     };
-    let gauge = Gauge::default()
-        .ratio(ratio)
-        .gauge_style(Style::default().fg(gauge_color))
-        .label(format!("{:>3.0}%", ratio * 100.0));
-    frame.render_widget(gauge, gauge_rect);
-    frame.render_widget(Paragraph::new(text), text_rect);
-    if spark_w >= 4 {
-        let spark = Sparkline::default()
-            .data(history)
-            .style(Style::default().fg(theme.sparkline.primary.as_ratatui()));
-        frame.render_widget(spark, spark_rect);
+    TileVisual::Gauge {
+        percent: pct,
+        value_text: format!("{pct}%"),
+        sub: format!("{ready}/{desired} ready"),
+        color,
     }
 }
 
-fn render_pod_detail(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    pod: Option<&Pod>,
-    history: &[u64],
-    theme: &Theme,
-) {
+fn pod_visual(pod: Option<&Pod>, theme: &Theme) -> TileVisual {
     let Some(p) = pod else {
-        frame.render_widget(Paragraph::new("…"), area);
-        return;
+        return TileVisual::Loading;
     };
     let phase = p
         .status
@@ -591,38 +595,16 @@ fn render_pod_detail(
         .and_then(|s| s.container_statuses.as_ref())
         .map(|cs| cs.iter().map(|c| c.restart_count).sum())
         .unwrap_or(0);
-    let phase_color = phase_color_for(phase.as_str(), theme);
-    let text = format!("{phase}  ready {ready}/{total}  restarts {restarts}");
-    let label_w = (text.len() as u16).min(area.width);
-    let label_rect = Rect {
-        x: area.x,
-        y: area.y,
-        width: label_w,
-        height: 1,
-    };
-    frame.render_widget(
-        Paragraph::new(text).style(Style::default().fg(phase_color)),
-        label_rect,
-    );
-    let spark_w = area.width.saturating_sub(label_w + 1);
-    if spark_w >= 4 {
-        let spark_rect = Rect {
-            x: label_rect.x + label_rect.width + 1,
-            y: area.y,
-            width: spark_w,
-            height: 1,
-        };
-        let spark = Sparkline::default()
-            .data(history)
-            .style(Style::default().fg(theme.sparkline.primary.as_ratatui()));
-        frame.render_widget(spark, spark_rect);
+    TileVisual::Status {
+        big: phase.clone(),
+        sub: format!("{ready}/{total} ready · {restarts} restarts"),
+        color: phase_color_for(&phase, theme),
     }
 }
 
-fn render_service_detail(frame: &mut Frame<'_>, area: Rect, svc: Option<&Service>, theme: &Theme) {
+fn service_visual(svc: Option<&Service>, theme: &Theme) -> TileVisual {
     let Some(s) = svc else {
-        frame.render_widget(Paragraph::new("…"), area);
-        return;
+        return TileVisual::Loading;
     };
     let svc_type = s
         .spec
@@ -640,23 +622,19 @@ fn render_service_detail(frame: &mut Frame<'_>, area: Rect, svc: Option<&Service
         .and_then(|sp| sp.ports.as_ref())
         .map(|p| p.len())
         .unwrap_or(0);
-    let text = format!("{svc_type}  {cluster_ip}  {ports} port(s)");
-    frame.render_widget(
-        Paragraph::new(text).style(Style::default().fg(theme.selection_fg.as_ratatui())),
-        area,
-    );
+    TileVisual::Status {
+        big: svc_type,
+        sub: format!(
+            "{cluster_ip} · {ports} port{}",
+            if ports == 1 { "" } else { "s" }
+        ),
+        color: theme.header_fg.as_ratatui(),
+    }
 }
 
-fn render_node_detail(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    node: Option<&Node>,
-    history: &[u64],
-    theme: &Theme,
-) {
+fn node_visual(node: Option<&Node>, theme: &Theme) -> TileVisual {
     let Some(n) = node else {
-        frame.render_widget(Paragraph::new("…"), area);
-        return;
+        return TileVisual::Loading;
     };
     let ready = node_is_ready(n);
     let (status, color) = if ready {
@@ -664,32 +642,252 @@ fn render_node_detail(
     } else {
         ("NotReady", theme.status.failed.as_ratatui())
     };
-    let pod_count = history.last().copied().unwrap_or(0);
-    let text = format!("{status}  pods {pod_count}");
-    let label_w = (text.len() as u16).min(area.width);
-    let label_rect = Rect {
-        x: area.x,
-        y: area.y,
-        width: label_w,
-        height: 1,
-    };
-    frame.render_widget(
-        Paragraph::new(text).style(Style::default().fg(color)),
-        label_rect,
-    );
-    let spark_w = area.width.saturating_sub(label_w + 1);
-    if spark_w >= 4 {
-        let spark_rect = Rect {
-            x: label_rect.x + label_rect.width + 1,
-            y: area.y,
-            width: spark_w,
-            height: 1,
-        };
-        let spark = Sparkline::default()
-            .data(history)
-            .style(Style::default().fg(color));
-        frame.render_widget(spark, spark_rect);
+    TileVisual::Status {
+        big: status.into(),
+        sub: String::new(),
+        color,
     }
+}
+
+/// A pin tile. Bordered cell with a title and a body whose shape
+/// depends on the kind. Numeric kinds (Deployment) get a car-style
+/// gauge. Status kinds get big text + sub-label.
+fn render_tile(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    pin: &Pin,
+    snap: Option<&PinSnapshot>,
+    selected: bool,
+    theme: &Theme,
+) {
+    let visual = tile_visual(pin, snap, theme);
+    let border_style = if selected {
+        Style::default()
+            .fg(theme.selection_fg.as_ratatui())
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted_fg.as_ratatui())
+    };
+    let title = format!(
+        " {} ",
+        truncate_label(&pin.label(), area.width.saturating_sub(4))
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(title);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+
+    match visual {
+        TileVisual::Gauge {
+            percent,
+            value_text,
+            sub,
+            color,
+        } => render_gauge(frame, inner, percent, &value_text, &sub, color, theme),
+        TileVisual::Status { big, sub, color } => {
+            render_status(frame, inner, &big, &sub, color, theme)
+        }
+        TileVisual::Missing => render_status(
+            frame,
+            inner,
+            "(missing)",
+            "",
+            theme.status.failed.as_ratatui(),
+            theme,
+        ),
+        TileVisual::Loading => {
+            render_status(frame, inner, "…", "", theme.muted_fg.as_ratatui(), theme)
+        }
+    }
+}
+
+/// Dial-style gauge inside a tile body. Four rows:
+///   row 0: arc top (dotted, coloured by zone)
+///   row 1: needle ▼ positioned by percent
+///   row 2: tick axis (5 major ticks, muted)
+///   row 3: value readout (centered, bold, coloured by zone)
+fn render_gauge(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    percent: u8,
+    value_text: &str,
+    sub: &str,
+    color: Color,
+    theme: &Theme,
+) {
+    if inner.height < 1 {
+        return;
+    }
+    let pad = 1u16;
+    if inner.width < pad * 2 + 3 {
+        render_status(frame, inner, value_text, sub, color, theme);
+        return;
+    }
+    let arc_x = inner.x + pad;
+    let arc_w = inner.width - pad * 2;
+
+    // ARC TOP
+    let mut arc = String::with_capacity(arc_w as usize);
+    arc.push('╭');
+    for _ in 1..(arc_w - 1) {
+        arc.push('┄');
+    }
+    arc.push('╮');
+    frame.render_widget(
+        Paragraph::new(arc).style(Style::default().fg(color)),
+        Rect {
+            x: arc_x,
+            y: inner.y,
+            width: arc_w,
+            height: 1,
+        },
+    );
+    if inner.height < 2 {
+        return;
+    }
+
+    // NEEDLE
+    let span = arc_w.saturating_sub(2).max(1);
+    let needle_offset = ((percent as u32) * (span as u32 - 1) / 100) as u16;
+    let needle_x = arc_x + 1 + needle_offset;
+    frame.render_widget(
+        Paragraph::new("▼").style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Rect {
+            x: needle_x,
+            y: inner.y + 1,
+            width: 1,
+            height: 1,
+        },
+    );
+    if inner.height < 3 {
+        return;
+    }
+
+    // TICK AXIS
+    if arc_w >= 5 {
+        let mut ticks = vec![' '; arc_w as usize];
+        for k in 0..5u16 {
+            let idx = ((k as u32 * (arc_w as u32 - 1)) / 4) as usize;
+            ticks[idx] = '┴';
+        }
+        for (i, c) in ticks.iter_mut().enumerate() {
+            if *c == ' ' && i > 0 && i < arc_w as usize - 1 {
+                *c = '─';
+            }
+        }
+        let tick_str: String = ticks.into_iter().collect();
+        frame.render_widget(
+            Paragraph::new(tick_str).style(Style::default().fg(theme.muted_fg.as_ratatui())),
+            Rect {
+                x: arc_x,
+                y: inner.y + 2,
+                width: arc_w,
+                height: 1,
+            },
+        );
+    }
+    if inner.height < 4 {
+        return;
+    }
+
+    // VALUE READOUT (centered, bold, coloured)
+    frame.render_widget(
+        Paragraph::new(truncate_label(value_text, inner.width))
+            .alignment(ratatui::layout::Alignment::Center)
+            .style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Rect {
+            x: inner.x,
+            y: inner.y + 3,
+            width: inner.width,
+            height: 1,
+        },
+    );
+}
+
+/// Status-only tile body: big text + sub-label, both centered.
+fn render_status(
+    frame: &mut Frame<'_>,
+    inner: Rect,
+    big: &str,
+    sub: &str,
+    color: Color,
+    theme: &Theme,
+) {
+    if inner.height == 0 {
+        return;
+    }
+    let pair = if sub.is_empty() { 1 } else { 2 };
+    let big_row = inner.y + inner.height.saturating_sub(pair) / 2;
+    let sub_row = big_row + 1;
+
+    frame.render_widget(
+        Paragraph::new(truncate_label(big, inner.width))
+            .alignment(ratatui::layout::Alignment::Center)
+            .style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Rect {
+            x: inner.x,
+            y: big_row,
+            width: inner.width,
+            height: 1,
+        },
+    );
+
+    if !sub.is_empty() && sub_row < inner.y + inner.height {
+        frame.render_widget(
+            Paragraph::new(truncate_label(sub, inner.width))
+                .alignment(ratatui::layout::Alignment::Center)
+                .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+            Rect {
+                x: inner.x,
+                y: sub_row,
+                width: inner.width,
+                height: 1,
+            },
+        );
+    }
+}
+
+fn compact_pin_summary(pin: &Pin, snap: Option<&PinSnapshot>) -> String {
+    // Theme-independent text-only summary for the fallback row layout.
+    let stub_theme = crate::theme::Theme::terminal_default();
+    match tile_visual(pin, snap, &stub_theme) {
+        TileVisual::Gauge {
+            value_text, sub, ..
+        } => {
+            if sub.is_empty() {
+                value_text
+            } else {
+                format!("{value_text} · {sub}")
+            }
+        }
+        TileVisual::Status { big, sub, .. } => {
+            if sub.is_empty() {
+                big
+            } else {
+                format!("{big} · {sub}")
+            }
+        }
+        TileVisual::Missing => "(missing)".into(),
+        TileVisual::Loading => "…".into(),
+    }
+}
+
+fn truncate_label(s: &str, max_chars: u16) -> String {
+    let max = max_chars as usize;
+    if s.chars().count() <= max {
+        return s.into();
+    }
+    if max <= 1 {
+        return "…".into();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 fn phase_color_for(phase: &str, theme: &Theme) -> Color {
