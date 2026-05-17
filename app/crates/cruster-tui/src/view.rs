@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use crossterm::event::KeyEvent;
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
+use ratatui::layout::Rect;
 use ratatui::Frame;
 
 use crate::app::LoopState;
@@ -25,8 +26,11 @@ pub trait ResourceView: Send {
     /// once per frame before `render`.
     async fn refresh(&mut self, registry: &StoreRegistry);
 
-    /// Render the view into the full frame area.
-    fn render(&self, frame: &mut Frame<'_>);
+    /// Render the view into `area`. The app reserves rows for chrome
+    /// (safety badge, action footer, toast/overlay strip) and passes
+    /// the remaining sub-rect here. Views should not call
+    /// `frame.area()` directly.
+    fn render(&self, frame: &mut Frame<'_>, area: Rect);
 
     /// Handle a single key press.
     fn handle_key(&mut self, key: KeyEvent) -> LoopState;

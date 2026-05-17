@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Node;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
@@ -42,9 +42,7 @@ impl ResourceView for NodesView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>) {
-        let area = frame.area();
-
+    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let header = Row::new(vec!["", "NAME", "STATUS", "ROLES", "VERSION", "OS-IMAGE"])
             .style(Style::default().fg(Color::DarkGray));
 

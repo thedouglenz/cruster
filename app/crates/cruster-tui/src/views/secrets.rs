@@ -10,7 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Secret;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
@@ -47,9 +47,7 @@ impl ResourceView for SecretsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>) {
-        let area = frame.area();
-
+    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "TYPE", "DATA", "AGE"])
             .style(Style::default().fg(Color::DarkGray));
 
@@ -223,7 +221,7 @@ mod tests {
 
         let backend = TestBackend::new(120, 10);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| view.render(f)).unwrap();
+        terminal.draw(|f| view.render(f, f.area())).unwrap();
         let rendered = buffer_as_string(terminal.backend().buffer());
 
         assert!(

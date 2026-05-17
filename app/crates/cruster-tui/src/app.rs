@@ -950,13 +950,19 @@ impl App {
     }
 
     fn render_full(&self, frame: &mut Frame<'_>) {
-        let area = frame.area();
+        let frame_area = frame.area();
+        // Reserve 1 row at the top (safety badge) and 2 rows at the
+        // bottom (action footer + overlay/toast strip). Whatever's
+        // left is the view's territory — views that don't know to
+        // dodge the chrome (dashboard's fixed-height pins band, etc.)
+        // would otherwise have their bottom rows overwritten.
+        let view_area = chrome_inset(frame_area);
         if self.describe_pane.is_open() || self.logs_pane.is_open() {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(area);
-            self.current_view.render(frame);
+                .split(view_area);
+            self.current_view.render(frame, chunks[0]);
             if self.describe_pane.is_open() {
                 self.describe_pane
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Describe);
@@ -965,7 +971,7 @@ impl App {
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Logs);
             }
         } else {
-            self.current_view.render(frame);
+            self.current_view.render(frame, view_area);
         }
         self.render_safety_badge(frame);
         self.render_action_footer(frame);
@@ -1084,6 +1090,19 @@ fn prompt_trigger_hints(prompts: &[PromptDef]) -> String {
         .map(|c| c.to_string())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// Inset the frame area to the view's territory: drops the top row
+/// (safety badge) and the bottom 2 rows (action footer + overlay
+/// strip). Saturates so tiny terminals don't underflow.
+fn chrome_inset(area: Rect) -> Rect {
+    let height = area.height.saturating_sub(3);
+    Rect {
+        x: area.x,
+        y: area.y.saturating_add(1),
+        width: area.width,
+        height,
+    }
 }
 
 fn format_action_hint(key: KeyCode, label: &str) -> String {

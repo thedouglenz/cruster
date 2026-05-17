@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Pod;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
@@ -71,9 +71,7 @@ impl ResourceView for PodsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>) {
-        let area = frame.area();
-
+    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "STATUS", "READY", "RESTARTS"])
             .style(Style::default().fg(Color::DarkGray));
 

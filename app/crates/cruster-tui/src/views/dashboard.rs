@@ -197,9 +197,7 @@ impl ResourceView for DashboardView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>) {
-        let area = frame.area();
-
+    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let pins_h = self.pins_section_lines().max(2) + 1; // +1 for border
         let chunks = Layout::default()
             .direction(Direction::Vertical)
