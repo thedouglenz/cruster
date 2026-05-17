@@ -471,7 +471,8 @@ fn render_pin_detail(
         && snap.node.is_none()
     {
         frame.render_widget(
-            Paragraph::new("(missing)").style(Style::default().fg(theme.status.failed.as_ratatui())),
+            Paragraph::new("(missing)")
+                .style(Style::default().fg(theme.status.failed.as_ratatui())),
             area,
         );
         return;
@@ -618,12 +619,7 @@ fn render_pod_detail(
     }
 }
 
-fn render_service_detail(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    svc: Option<&Service>,
-    theme: &Theme,
-) {
+fn render_service_detail(frame: &mut Frame<'_>, area: Rect, svc: Option<&Service>, theme: &Theme) {
     let Some(s) = svc else {
         frame.render_widget(Paragraph::new("…"), area);
         return;

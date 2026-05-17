@@ -214,9 +214,7 @@ mod tests {
 
         let backend = TestBackend::new(120, 5);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal
-            .draw(|f| view.render(f, f.area(), &theme))
-            .unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
         let buf = terminal.backend().buffer();
         let mut found = false;
         for y in 0..buf.area().height {
@@ -251,9 +249,7 @@ mod tests {
         let backend = TestBackend::new(120, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         let theme = crate::theme::Theme::terminal_default();
-        terminal
-            .draw(|f| view.render(f, f.area(), &theme))
-            .unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
         let rendered = buffer_as_string(terminal.backend().buffer());
 
         assert!(

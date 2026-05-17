@@ -198,9 +198,7 @@ mod tests {
 
         let backend = TestBackend::new(160, 5);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal
-            .draw(|f| view.render(f, f.area(), &theme))
-            .unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
         let buf = terminal.backend().buffer();
 
         let mut found_marker = false;
