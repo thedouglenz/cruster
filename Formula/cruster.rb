@@ -27,13 +27,13 @@ class Cruster < Formula
   on_macos do
     on_arm do
       url "https://github.com/thedouglenz/cruster/releases/download/v#{version}/cruster-#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+      sha256 "135b13ec310e939e5673a7479806a9b2dfcd1c293e3824e889c6254c01cf1095"
     end
   end
 
   on_linux do
     url "https://github.com/thedouglenz/cruster/releases/download/v#{version}/cruster-#{version}-x86_64-unknown-linux-gnu.tar.gz"
-    sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
+    sha256 "ad2f23fbde7bd875a80f20ff4987f97f5d83502159eec04ccd266b4c4fc3d131"
   end
 
   def install
