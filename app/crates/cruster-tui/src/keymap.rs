@@ -35,6 +35,8 @@ pub enum SemanticAction {
     /// Build a diagnostic markdown bundle for the current selection
     /// and write it to a file in the cwd.
     ExportDiagnostic,
+    /// Pin the currently selected resource to the pulse dashboard.
+    PinToDashboard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -98,6 +100,7 @@ impl Keymap {
         m.insert((KeyCode::Char('3'), alt), SemanticAction::LayoutIncident);
         m.insert((KeyCode::Char('P'), none), SemanticAction::OpenPromptLeader);
         m.insert((KeyCode::Char('E'), none), SemanticAction::ExportDiagnostic);
+        m.insert((KeyCode::Char('a'), none), SemanticAction::PinToDashboard);
         Self { bindings: m }
     }
 

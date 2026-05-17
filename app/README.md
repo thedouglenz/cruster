@@ -14,7 +14,10 @@ cargo build
 cargo run -p cruster-bin
 ```
 
-Uses your active kubeconfig context.
+Uses your active kubeconfig context. Cruster launches into the
+**pulse dashboard** by default — cluster stats up top, trends in
+the middle, your pinned services at the bottom. See "Pulse
+dashboard" below for how to add pins.
 
 ## Test
 
@@ -48,6 +51,7 @@ Type `:` to enter command mode, then a kind alias and `Enter`.
 
 | Alias | Kind |
 |---|---|
+| `dash` / `dashboard` / `pulse` | Pulse dashboard |
 | `po` / `pods` | Pods |
 | `deploy` / `deployments` | Deployments |
 | `svc` / `services` | Services |
@@ -56,6 +60,27 @@ Type `:` to enter command mode, then a kind alias and `Enter`.
 | `cm` / `configmaps` | ConfigMaps |
 | `sec` / `secrets` | Secrets |
 | `ns` / `namespaces` | Namespaces |
+
+### Pulse dashboard
+The default landing view. Three vertical bands:
+
+1. **summary** — nodes ready / total, namespace count, pod
+   counts by phase (R/P/F/S), deployment ready/total, service
+   count, recent (last 5 min) event count.
+2. **trends** — sparklines for pods-running, pods-failed, and
+   recent-event count over the last ~60 samples (1 sample/s).
+3. **pinned** — your curated list. Each pin renders as a
+   gauge + sparkline (Deployments), phase + restart sparkline
+   (Pods), type + cluster IP (Services), or ready badge + pod
+   count sparkline (Nodes). Pinned resources persist in
+   `~/.config/cruster/dashboard.toml`.
+
+| Key | Action |
+|---|---|
+| `a` (from any list view) | pin selected resource to dashboard |
+| `x` (on dashboard) | unpin the selected pin |
+| `j` / `k` (on dashboard) | move pin selection |
+| `Enter` (on dashboard) | switch to the pin's kind view |
 
 ### Actions on selection
 | Key | Action |

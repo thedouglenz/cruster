@@ -5,6 +5,7 @@ pub mod action_shipped;
 pub mod actions;
 pub mod app;
 pub mod command;
+pub mod dashboard;
 pub mod export;
 pub mod history;
 pub mod keymap;

@@ -22,6 +22,7 @@ use crate::actions::describe::DescribePane;
 use crate::actions::logs::LogsPane;
 use crate::actions::port_forward::{PortForward, PortForwards};
 use crate::command::{CommandAction, CommandLine};
+use crate::dashboard::{DashboardConfig, Pin};
 use crate::overlay::{Overlay, OverlayResult};
 #[allow(unused_imports)]
 use crate::overlays::palette::{EntryKind, Palette, PaletteEntry};
@@ -29,6 +30,7 @@ use crate::overlays::search::{Filter, SearchPrompt};
 use crate::prompts::PromptDef;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
+use crate::views::dashboard::DashboardView;
 use crate::views::deployments::DeploymentsView;
 use crate::views::events::EventsView;
 use crate::views::namespaces::NamespacesView;
@@ -96,7 +98,7 @@ impl App {
         Self {
             registry,
             client,
-            current_view: Box::new(PodsView::new()),
+            current_view: Box::new(DashboardView::new()),
             actions: crate::action_shipped::default_registry(),
             command: CommandLine::new(),
             describe_pane: DescribePane::new(),
@@ -105,7 +107,7 @@ impl App {
             overlay: None,
             history: {
                 let mut h = crate::history::History::with_capacity(200);
-                h.record("pods", None);
+                h.record("dashboard", None);
                 h
             },
             loaded_workflows: Vec::new(),
@@ -295,6 +297,31 @@ impl App {
                 self.pending_export = true;
                 LoopState::Continue
             }
+            S::PinToDashboard => {
+                self.pin_current_selection();
+                LoopState::Continue
+            }
+        }
+    }
+
+    fn pin_current_selection(&mut self) {
+        let Some(key) = self.current_view.selected_key() else {
+            self.toast = Some("nothing selected to pin".into());
+            return;
+        };
+        if self.current_view.id() == "dashboard" {
+            self.toast = Some("already on dashboard — press 'a' from a list view".into());
+            return;
+        }
+        let pin = Pin::from_key(&key);
+        let mut cfg = DashboardConfig::load_or_default();
+        if !cfg.add(pin.clone()) {
+            self.toast = Some(format!("already pinned: {}", pin.label()));
+            return;
+        }
+        match cfg.save() {
+            Ok(()) => self.toast = Some(format!("pinned: {}", pin.label())),
+            Err(e) => self.toast = Some(format!("pin save failed: {e}")),
         }
     }
 
@@ -405,6 +432,7 @@ impl App {
             })
             .collect();
         for view_id in [
+            "dashboard",
             "pods",
             "deployments",
             "services",
@@ -503,6 +531,7 @@ impl App {
     /// unknown ids.
     fn view_for_id(id: &str) -> Option<Box<dyn ResourceView>> {
         Some(match id {
+            "dashboard" => Box::new(DashboardView::new()),
             "pods" => Box::new(PodsView::new()),
             "deployments" => Box::new(DeploymentsView::new()),
             "services" => Box::new(ServicesView::new()),
@@ -637,7 +666,14 @@ impl App {
             return self.dispatch_semantic(action);
         }
 
-        self.current_view.handle_key(key)
+        let state = self.current_view.handle_key(key);
+        if let Some(id) = self.current_view.take_pending_view_switch() {
+            if let Some(v) = Self::view_for_id(id) {
+                self.current_view = v;
+                self.history.record(id, None);
+            }
+        }
+        state
     }
 
     fn edit_selection_yaml(&mut self) {
@@ -1098,6 +1134,12 @@ mod tests {
     fn q_quits() {
         let mut a = app();
         assert_eq!(a.handle_key(press(KeyCode::Char('q'))), LoopState::Quit);
+    }
+
+    #[test]
+    fn default_landing_view_is_dashboard() {
+        let a = app();
+        assert_eq!(a.current_view.id(), "dashboard");
     }
 
     #[test]

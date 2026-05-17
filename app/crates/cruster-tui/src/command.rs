@@ -87,6 +87,7 @@ impl CommandLine {
 /// aliases.
 pub fn resolve_alias(alias: &str) -> Option<&'static str> {
     match alias {
+        "dash" | "dashboard" | "pulse" => Some("dashboard"),
         "po" | "pod" | "pods" => Some("pods"),
         "deploy" | "deployment" | "deployments" => Some("deployments"),
         "svc" | "service" | "services" => Some("services"),
@@ -174,5 +175,12 @@ mod tests {
         assert_eq!(resolve_alias("po"), Some("pods"));
         assert_eq!(resolve_alias("svc"), Some("services"));
         assert_eq!(resolve_alias("nope"), None);
+    }
+
+    #[test]
+    fn resolve_alias_recognises_dashboard_aliases() {
+        assert_eq!(resolve_alias("dash"), Some("dashboard"));
+        assert_eq!(resolve_alias("dashboard"), Some("dashboard"));
+        assert_eq!(resolve_alias("pulse"), Some("dashboard"));
     }
 }

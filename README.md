@@ -15,6 +15,13 @@ This repository is a monorepo:
 
 ## Status
 
+**Phase 6A.** Pulse dashboard is now the default launch view —
+cluster stats + trend sparklines + a curated panel of user-pinned
+services. Press `a` from any list view to pin the selected
+resource; pins persist in `~/.config/cruster/dashboard.toml`.
+Press `:dashboard` (or `:pulse`) to jump back from any other
+view. Closes #1.
+
 **Phase 5C complete — v1 MVP scope closed.** Landing page lives at
 `web/index.html` (plain HTML + CSS, no build step). Preview locally
 with `cd web && python3 -m http.server`. Deploy by dropping `web/`
