@@ -1,0 +1,85 @@
+Cruster Proprietary License
+Copyright (c) 2026 Doug Lenz <thedouglenz@gmail.com>
+All rights reserved.
+
+1. Definitions
+
+   "Software" means the source code, object code, documentation, and any
+   other materials in this repository, including all branches, tags, and
+   release artifacts.
+
+   "Licensor" means Doug Lenz, the copyright holder.
+
+   "You" means the individual or legal entity exercising rights under
+   this License.
+
+2. Grant
+
+   The Licensor grants You a personal, non-exclusive, non-transferable,
+   non-sublicensable, revocable license to download and run unmodified
+   copies of the Software for the purpose of evaluating it or using it
+   as an end user, subject to any tier or trial restrictions enforced
+   by the Software itself.
+
+3. Restrictions
+
+   Except as expressly permitted in Section 2, or by a separate written
+   agreement signed by the Licensor, You may not:
+
+   (a) copy, reproduce, or redistribute the Software, in whole or in
+       part, in source or binary form;
+   (b) modify, adapt, translate, or create derivative works of the
+       Software;
+   (c) reverse engineer, decompile, or disassemble the Software, except
+       to the extent that applicable law expressly permits despite this
+       limitation;
+   (d) sublicense, rent, lease, lend, sell, or otherwise transfer the
+       Software or any rights granted under this License;
+   (e) remove or alter any copyright, trademark, or other proprietary
+       notices in or on the Software;
+   (f) use the Software to provide a hosted service to third parties
+       without a separate commercial agreement.
+
+   All rights not expressly granted are reserved by the Licensor.
+
+4. Contributions
+
+   By submitting a patch, pull request, issue with attached code, or any
+   other contribution to the Software (a "Contribution"), You agree
+   that the Contribution is licensed to the Licensor on an inbound =
+   outbound basis: the Licensor receives a perpetual, worldwide,
+   non-exclusive, royalty-free, irrevocable license to use, reproduce,
+   modify, distribute, sublicense, and relicense the Contribution as
+   part of the Software, including under future versions of this
+   License or under different proprietary or commercial terms. You
+   represent that You have the right to grant this license and that
+   the Contribution is Your original work or You have authority to
+   submit it.
+
+   No copyright assignment is required.
+
+5. No Warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NONINFRINGEMENT.
+
+6. Limitation of Liability
+
+   IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+   OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE
+   OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+7. Termination
+
+   This License terminates automatically if You breach any of its
+   terms. Upon termination You must cease all use of the Software and
+   destroy all copies in Your possession or control.
+
+8. Contact
+
+   For permissions outside the scope of this License, including
+   redistribution, modification, OEM, or commercial hosting rights,
+   contact thedouglenz@gmail.com.
