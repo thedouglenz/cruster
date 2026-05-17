@@ -27,6 +27,7 @@ use ratatui::Frame;
 use crate::app::LoopState;
 use crate::dashboard::{DashboardConfig, Pin};
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 
 const HISTORY_CAP: usize = 60;
@@ -197,7 +198,7 @@ impl ResourceView for DashboardView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let pins_h = self.pins_section_lines().max(2) + 1; // +1 for border
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -209,8 +210,8 @@ impl ResourceView for DashboardView {
             .split(area);
 
         self.render_summary(frame, chunks[0]);
-        self.render_trends(frame, chunks[1]);
-        self.render_pins(frame, chunks[2]);
+        self.render_trends(frame, chunks[1], theme);
+        self.render_pins(frame, chunks[2], theme);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> LoopState {
@@ -290,7 +291,7 @@ impl DashboardView {
         frame.render_widget(para, area);
     }
 
-    fn render_trends(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_trends(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let block = Block::default().borders(Borders::TOP).title(" trends ");
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -313,18 +314,33 @@ impl DashboardView {
             ])
             .split(inner);
 
-        draw_trend_row(frame, rows[0], "pods running", &pods_running, Color::Green);
-        draw_trend_row(frame, rows[1], "pods failed ", &pods_failed, Color::Red);
+        draw_trend_row(
+            frame,
+            rows[0],
+            "pods running",
+            &pods_running,
+            theme.sparkline.primary.as_ratatui(),
+            theme,
+        );
+        draw_trend_row(
+            frame,
+            rows[1],
+            "pods failed ",
+            &pods_failed,
+            theme.sparkline.danger.as_ratatui(),
+            theme,
+        );
         draw_trend_row(
             frame,
             rows[2],
             "events      ",
             &events_recent,
-            Color::Yellow,
+            theme.sparkline.warn.as_ratatui(),
+            theme,
         );
     }
 
-    fn render_pins(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_pins(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let block = Block::default()
             .borders(Borders::TOP)
             .title(" pinned · [a] add from any view · [x] unpin · [enter] open ");
@@ -335,7 +351,7 @@ impl DashboardView {
             let hint = Paragraph::new(
                 "no pins yet — switch to a list view (`:pods`, `:deploy`, …) and press `a`",
             )
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.muted_fg.as_ratatui()));
             frame.render_widget(hint, inner);
             return;
         }
@@ -357,7 +373,7 @@ impl DashboardView {
             let label = format!("{marker} {}", pin.label());
             let style = if is_selected {
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.selection_fg.as_ratatui())
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -378,14 +394,21 @@ impl DashboardView {
                 height: 1,
             };
             if detail_rect.y < inner.y + inner.height {
-                render_pin_detail(frame, detail_rect, pin, snap, &self.pin_history(i));
+                render_pin_detail(frame, detail_rect, pin, snap, &self.pin_history(i), theme);
             }
             y += 2;
         }
     }
 }
 
-fn draw_trend_row(frame: &mut Frame<'_>, area: Rect, label: &str, data: &[u64], color: Color) {
+fn draw_trend_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    data: &[u64],
+    color: Color,
+    theme: &Theme,
+) {
     if area.width < (label.len() as u16) + 8 {
         return;
     }
@@ -413,7 +436,7 @@ fn draw_trend_row(frame: &mut Frame<'_>, area: Rect, label: &str, data: &[u64], 
         height: 1,
     };
     frame.render_widget(
-        Paragraph::new(label.to_string()).style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(label.to_string()).style(Style::default().fg(theme.muted_fg.as_ratatui())),
         label_rect,
     );
     let spark = Sparkline::default()
@@ -432,10 +455,11 @@ fn render_pin_detail(
     pin: &Pin,
     snap: Option<&PinSnapshot>,
     history: &[u64],
+    theme: &Theme,
 ) {
     let Some(snap) = snap else {
         frame.render_widget(
-            Paragraph::new("…").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("…").style(Style::default().fg(theme.muted_fg.as_ratatui())),
             area,
         );
         return;
@@ -447,21 +471,26 @@ fn render_pin_detail(
         && snap.node.is_none()
     {
         frame.render_widget(
-            Paragraph::new("(missing)").style(Style::default().fg(Color::Red)),
+            Paragraph::new("(missing)").style(Style::default().fg(theme.status.failed.as_ratatui())),
             area,
         );
         return;
     }
 
     match pin.kind.as_str() {
-        "Deployment" => render_deployment_detail(frame, area, snap.deployment.as_ref(), history),
-        "Pod" => render_pod_detail(frame, area, snap.pod.as_ref(), history),
-        "Service" => render_service_detail(frame, area, snap.service.as_ref()),
-        "Node" => render_node_detail(frame, area, snap.node.as_ref(), history),
+        "Deployment" => {
+            render_deployment_detail(frame, area, snap.deployment.as_ref(), history, theme)
+        }
+        "Pod" => render_pod_detail(frame, area, snap.pod.as_ref(), history, theme),
+        "Service" => render_service_detail(frame, area, snap.service.as_ref(), theme),
+        "Node" => render_node_detail(frame, area, snap.node.as_ref(), history, theme),
         other => {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled(other.to_string(), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        other.to_string(),
+                        Style::default().fg(theme.muted_fg.as_ratatui()),
+                    ),
                     Span::raw("  pinned"),
                 ])),
                 area,
@@ -475,6 +504,7 @@ fn render_deployment_detail(
     area: Rect,
     deploy: Option<&Deployment>,
     history: &[u64],
+    theme: &Theme,
 ) {
     let Some(d) = deploy else {
         frame.render_widget(Paragraph::new("…"), area);
@@ -518,25 +548,32 @@ fn render_deployment_detail(
         height: 1,
     };
 
+    let gauge_color = if ratio >= 1.0 {
+        theme.gauge.ok.as_ratatui()
+    } else {
+        theme.gauge.warn.as_ratatui()
+    };
     let gauge = Gauge::default()
         .ratio(ratio)
-        .gauge_style(Style::default().fg(if ratio >= 1.0 {
-            Color::Green
-        } else {
-            Color::Yellow
-        }))
+        .gauge_style(Style::default().fg(gauge_color))
         .label(format!("{:>3.0}%", ratio * 100.0));
     frame.render_widget(gauge, gauge_rect);
     frame.render_widget(Paragraph::new(text), text_rect);
     if spark_w >= 4 {
         let spark = Sparkline::default()
             .data(history)
-            .style(Style::default().fg(Color::Green));
+            .style(Style::default().fg(theme.sparkline.primary.as_ratatui()));
         frame.render_widget(spark, spark_rect);
     }
 }
 
-fn render_pod_detail(frame: &mut Frame<'_>, area: Rect, pod: Option<&Pod>, history: &[u64]) {
+fn render_pod_detail(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    pod: Option<&Pod>,
+    history: &[u64],
+    theme: &Theme,
+) {
     let Some(p) = pod else {
         frame.render_widget(Paragraph::new("…"), area);
         return;
@@ -553,13 +590,7 @@ fn render_pod_detail(frame: &mut Frame<'_>, area: Rect, pod: Option<&Pod>, histo
         .and_then(|s| s.container_statuses.as_ref())
         .map(|cs| cs.iter().map(|c| c.restart_count).sum())
         .unwrap_or(0);
-    let phase_color = match phase.as_str() {
-        "Running" => Color::Green,
-        "Pending" => Color::Yellow,
-        "Failed" => Color::Red,
-        "Succeeded" => Color::Blue,
-        _ => Color::DarkGray,
-    };
+    let phase_color = phase_color_for(phase.as_str(), theme);
     let text = format!("{phase}  ready {ready}/{total}  restarts {restarts}");
     let label_w = (text.len() as u16).min(area.width);
     let label_rect = Rect {
@@ -582,12 +613,17 @@ fn render_pod_detail(frame: &mut Frame<'_>, area: Rect, pod: Option<&Pod>, histo
         };
         let spark = Sparkline::default()
             .data(history)
-            .style(Style::default().fg(Color::Magenta));
+            .style(Style::default().fg(theme.sparkline.primary.as_ratatui()));
         frame.render_widget(spark, spark_rect);
     }
 }
 
-fn render_service_detail(frame: &mut Frame<'_>, area: Rect, svc: Option<&Service>) {
+fn render_service_detail(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    svc: Option<&Service>,
+    theme: &Theme,
+) {
     let Some(s) = svc else {
         frame.render_widget(Paragraph::new("…"), area);
         return;
@@ -610,21 +646,27 @@ fn render_service_detail(frame: &mut Frame<'_>, area: Rect, svc: Option<&Service
         .unwrap_or(0);
     let text = format!("{svc_type}  {cluster_ip}  {ports} port(s)");
     frame.render_widget(
-        Paragraph::new(text).style(Style::default().fg(Color::Cyan)),
+        Paragraph::new(text).style(Style::default().fg(theme.selection_fg.as_ratatui())),
         area,
     );
 }
 
-fn render_node_detail(frame: &mut Frame<'_>, area: Rect, node: Option<&Node>, history: &[u64]) {
+fn render_node_detail(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    node: Option<&Node>,
+    history: &[u64],
+    theme: &Theme,
+) {
     let Some(n) = node else {
         frame.render_widget(Paragraph::new("…"), area);
         return;
     };
     let ready = node_is_ready(n);
     let (status, color) = if ready {
-        ("Ready", Color::Green)
+        ("Ready", theme.status.running.as_ratatui())
     } else {
-        ("NotReady", Color::Red)
+        ("NotReady", theme.status.failed.as_ratatui())
     };
     let pod_count = history.last().copied().unwrap_or(0);
     let text = format!("{status}  pods {pod_count}");
@@ -651,6 +693,16 @@ fn render_node_detail(frame: &mut Frame<'_>, area: Rect, node: Option<&Node>, hi
             .data(history)
             .style(Style::default().fg(color));
         frame.render_widget(spark, spark_rect);
+    }
+}
+
+fn phase_color_for(phase: &str, theme: &Theme) -> Color {
+    match phase {
+        "Running" => theme.status.running.as_ratatui(),
+        "Pending" => theme.status.pending.as_ratatui(),
+        "Failed" => theme.status.failed.as_ratatui(),
+        "Succeeded" => theme.status.succeeded.as_ratatui(),
+        _ => theme.status.unknown.as_ratatui(),
     }
 }
 
@@ -882,6 +934,58 @@ mod tests {
         v.refresh(&registry).await;
         // Three quick refreshes within <1s should produce one sample.
         assert_eq!(v.history.len(), 1);
+    }
+
+    #[test]
+    fn render_trend_label_uses_themes_muted_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut v = DashboardView::new();
+        v.history.push_back(Sample {
+            pods_running: 3,
+            pods_failed: 0,
+            events_recent: 1,
+            pin_values: vec![],
+        });
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want_muted = theme.muted_fg.as_ratatui();
+
+        let backend = TestBackend::new(80, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| v.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row_text = String::new();
+        let mut row_fg = None;
+        for y in 0..buf.area().height {
+            let mut line = String::new();
+            for x in 0..buf.area().width {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            if line.contains("pods running") {
+                row_text = line;
+                // The label cells should carry the muted_fg color.
+                for x in 0..buf.area().width {
+                    let cell = &buf[(x, y)];
+                    if cell.symbol() == "p" {
+                        row_fg = cell.style().fg;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        assert!(
+            !row_text.is_empty(),
+            "expected to find a 'pods running' trend row"
+        );
+        assert_eq!(
+            row_fg,
+            Some(want_muted),
+            "trend label should be painted in theme.muted_fg"
+        );
     }
 
     #[test]

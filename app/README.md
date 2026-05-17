@@ -75,6 +75,11 @@ The default landing view. Three vertical bands:
    count sparkline (Nodes). Pinned resources persist in
    `~/.config/cruster/dashboard.toml`.
 
+All body colours — table headers, selection markers, status
+badges, gauges, and sparklines — follow the active theme. Switch
+themes from the command palette (`:themes`) and every view
+restyles instantly.
+
 | Key | Action |
 |---|---|
 | `a` (from any list view) | pin selected resource to dashboard |

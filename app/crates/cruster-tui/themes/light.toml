@@ -4,6 +4,9 @@ command_bg = "white"
 search_bg = "lightblue"
 toast_bg = "lightred"
 selected_bg = "#dddddd"
+selection_fg = "#0066aa"
+header_fg = "#555555"
+muted_fg = "#999999"
 
 [env_band]
 prod = "#aa0000"
@@ -11,3 +14,20 @@ staging = "#aa7700"
 dev = "#007700"
 local = "#007777"
 unknown = "#888888"
+
+[status]
+running = "#007700"
+pending = "#aa7700"
+failed = "#aa0000"
+succeeded = "#0055aa"
+unknown = "#888888"
+
+[sparkline]
+primary = "#007700"
+warn = "#aa7700"
+danger = "#aa0000"
+
+[gauge]
+ok = "#007700"
+warn = "#aa7700"
+danger = "#aa0000"

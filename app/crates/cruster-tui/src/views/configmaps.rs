@@ -10,12 +10,13 @@ use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::ConfigMap;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 use crate::views::events::human_age;
 
@@ -46,9 +47,9 @@ impl ResourceView for ConfigMapsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "DATA", "AGE"])
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -67,7 +68,7 @@ impl ResourceView for ConfigMapsView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -150,6 +151,47 @@ mod tests {
     fn cm_data_count_zero_when_empty() {
         let cm = ConfigMap::default();
         assert_eq!(cm_data_count(&cm), 0);
+    }
+
+    #[test]
+    fn render_selected_row_uses_themes_selection_fg() {
+        use cruster_core::ResourceKey;
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = ConfigMapsView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("ConfigMap", "default", "cm"),
+            ConfigMap {
+                metadata: ObjectMeta {
+                    name: Some("cm".into()),
+                    namespace: Some("default".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )];
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| view.render(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "▎" {
+                    found = true;
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                }
+            }
+        }
+        assert!(found);
     }
 
     #[test]

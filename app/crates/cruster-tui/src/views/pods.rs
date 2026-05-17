@@ -6,12 +6,13 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Pod;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
@@ -71,9 +72,9 @@ impl ResourceView for PodsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "STATUS", "READY", "RESTARTS"])
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -93,7 +94,7 @@ impl ResourceView for PodsView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -250,6 +251,47 @@ mod tests {
         let mut view = PodsView::new();
         view.refresh(&registry).await;
         assert_eq!(view.snapshot.len(), 1);
+    }
+
+    #[test]
+    fn render_selected_row_uses_themes_selection_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, p) = make_pod_entry("default", "nginx");
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        // Pick a theme whose selection_fg differs from terminal's
+        // default cyan — solarized-light puts it on #268bd2 blue.
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| view.render(f, f.area(), &theme))
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let mut saw_marker_cell = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                let cell = &buf[(x, y)];
+                if cell.symbol() == "▎" {
+                    saw_marker_cell = true;
+                    assert_eq!(
+                        cell.style().fg,
+                        Some(want),
+                        "selected-row marker should use theme selection_fg"
+                    );
+                }
+            }
+        }
+        assert!(
+            saw_marker_cell,
+            "expected to find ▎ selection marker in rendered buffer"
+        );
     }
 
     #[tokio::test]

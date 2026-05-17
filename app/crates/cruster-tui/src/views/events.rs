@@ -7,12 +7,13 @@ use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Event;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
@@ -43,7 +44,7 @@ impl ResourceView for EventsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec![
             "",
             "NAMESPACE",
@@ -53,7 +54,7 @@ impl ResourceView for EventsView {
             "OBJECT",
             "MESSAGE",
         ])
-        .style(Style::default().fg(Color::DarkGray));
+        .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -74,7 +75,7 @@ impl ResourceView for EventsView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -179,6 +180,40 @@ fn event_object(e: &Event) -> String {
 mod tests {
     use super::*;
     use chrono::Duration;
+
+    #[test]
+    fn render_header_row_uses_themes_header_fg() {
+        use cruster_core::ResourceKey;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = EventsView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("Event", "default", "evt"),
+            Event::default(),
+        )];
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want_selection = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(160, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| view.render(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut found_marker = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "▎" {
+                    found_marker = true;
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_selection));
+                }
+            }
+        }
+        assert!(found_marker);
+    }
 
     #[test]
     fn human_age_seconds() {

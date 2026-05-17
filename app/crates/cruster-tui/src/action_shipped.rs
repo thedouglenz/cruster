@@ -252,7 +252,13 @@ mod tests {
                 "test"
             }
             async fn refresh(&mut self, _r: &cruster_kube::StoreRegistry) {}
-            fn render(&self, _f: &mut ratatui::Frame<'_>, _area: ratatui::layout::Rect) {}
+            fn render(
+                &self,
+                _f: &mut ratatui::Frame<'_>,
+                _area: ratatui::layout::Rect,
+                _theme: &crate::theme::Theme,
+            ) {
+            }
             fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> crate::app::LoopState {
                 crate::app::LoopState::Continue
             }

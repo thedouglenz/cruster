@@ -8,6 +8,7 @@ use ratatui::layout::Rect;
 use ratatui::Frame;
 
 use crate::app::LoopState;
+use crate::theme::Theme;
 
 /// One TUI view, scoped to one resource kind.
 ///
@@ -29,8 +30,11 @@ pub trait ResourceView: Send {
     /// Render the view into `area`. The app reserves rows for chrome
     /// (safety badge, action footer, toast/overlay strip) and passes
     /// the remaining sub-rect here. Views should not call
-    /// `frame.area()` directly.
-    fn render(&self, frame: &mut Frame<'_>, area: Rect);
+    /// `frame.area()` directly. `theme` is threaded through so view
+    /// bodies stay consistent with the user's selected theme — every
+    /// foreground color decision should come from `theme` rather than
+    /// a hardcoded `Color::*` literal.
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme);
 
     /// Handle a single key press.
     fn handle_key(&mut self, key: KeyEvent) -> LoopState;
