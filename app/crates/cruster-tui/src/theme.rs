@@ -18,8 +18,20 @@ pub struct Theme {
     pub toast_bg: ThemeColor,
     #[serde(default = "default_selected_bg")]
     pub selected_bg: ThemeColor,
+    #[serde(default = "default_selection_fg")]
+    pub selection_fg: ThemeColor,
+    #[serde(default = "default_header_fg")]
+    pub header_fg: ThemeColor,
+    #[serde(default = "default_muted_fg")]
+    pub muted_fg: ThemeColor,
     #[serde(default)]
     pub env_band: EnvBand,
+    #[serde(default)]
+    pub status: StatusColors,
+    #[serde(default)]
+    pub sparkline: SparklineColors,
+    #[serde(default)]
+    pub gauge: GaugeColors,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -44,6 +56,72 @@ impl Default for EnvBand {
             dev: default_dev(),
             local: default_local(),
             unknown: default_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatusColors {
+    #[serde(default = "default_status_running")]
+    pub running: ThemeColor,
+    #[serde(default = "default_status_pending")]
+    pub pending: ThemeColor,
+    #[serde(default = "default_status_failed")]
+    pub failed: ThemeColor,
+    #[serde(default = "default_status_succeeded")]
+    pub succeeded: ThemeColor,
+    #[serde(default = "default_status_unknown")]
+    pub unknown: ThemeColor,
+}
+
+impl Default for StatusColors {
+    fn default() -> Self {
+        Self {
+            running: default_status_running(),
+            pending: default_status_pending(),
+            failed: default_status_failed(),
+            succeeded: default_status_succeeded(),
+            unknown: default_status_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SparklineColors {
+    #[serde(default = "default_sparkline_primary")]
+    pub primary: ThemeColor,
+    #[serde(default = "default_sparkline_warn")]
+    pub warn: ThemeColor,
+    #[serde(default = "default_sparkline_danger")]
+    pub danger: ThemeColor,
+}
+
+impl Default for SparklineColors {
+    fn default() -> Self {
+        Self {
+            primary: default_sparkline_primary(),
+            warn: default_sparkline_warn(),
+            danger: default_sparkline_danger(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GaugeColors {
+    #[serde(default = "default_gauge_ok")]
+    pub ok: ThemeColor,
+    #[serde(default = "default_gauge_warn")]
+    pub warn: ThemeColor,
+    #[serde(default = "default_gauge_danger")]
+    pub danger: ThemeColor,
+}
+
+impl Default for GaugeColors {
+    fn default() -> Self {
+        Self {
+            ok: default_gauge_ok(),
+            warn: default_gauge_warn(),
+            danger: default_gauge_danger(),
         }
     }
 }
@@ -117,6 +195,48 @@ fn default_local() -> ThemeColor {
 }
 fn default_unknown() -> ThemeColor {
     ThemeColor::Named("darkgray".into())
+}
+fn default_selection_fg() -> ThemeColor {
+    ThemeColor::Named("cyan".into())
+}
+fn default_header_fg() -> ThemeColor {
+    ThemeColor::Named("darkgray".into())
+}
+fn default_muted_fg() -> ThemeColor {
+    ThemeColor::Named("darkgray".into())
+}
+fn default_status_running() -> ThemeColor {
+    ThemeColor::Named("green".into())
+}
+fn default_status_pending() -> ThemeColor {
+    ThemeColor::Named("yellow".into())
+}
+fn default_status_failed() -> ThemeColor {
+    ThemeColor::Named("red".into())
+}
+fn default_status_succeeded() -> ThemeColor {
+    ThemeColor::Named("blue".into())
+}
+fn default_status_unknown() -> ThemeColor {
+    ThemeColor::Named("darkgray".into())
+}
+fn default_sparkline_primary() -> ThemeColor {
+    ThemeColor::Named("green".into())
+}
+fn default_sparkline_warn() -> ThemeColor {
+    ThemeColor::Named("yellow".into())
+}
+fn default_sparkline_danger() -> ThemeColor {
+    ThemeColor::Named("red".into())
+}
+fn default_gauge_ok() -> ThemeColor {
+    ThemeColor::Named("green".into())
+}
+fn default_gauge_warn() -> ThemeColor {
+    ThemeColor::Named("yellow".into())
+}
+fn default_gauge_danger() -> ThemeColor {
+    ThemeColor::Named("red".into())
 }
 
 impl Theme {

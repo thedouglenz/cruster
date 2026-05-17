@@ -6,12 +6,13 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Service;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
@@ -41,9 +42,9 @@ impl ResourceView for ServicesView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "TYPE", "CLUSTER-IP", "PORTS"])
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -63,7 +64,7 @@ impl ResourceView for ServicesView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -215,6 +216,36 @@ mod tests {
             ..Default::default()
         }]);
         assert_eq!(svc_ports(&s), "8080/TCP");
+    }
+
+    #[test]
+    fn render_selected_row_uses_themes_selection_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = ServicesView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("Service", "default", "web"),
+            make_svc("default", "web", "ClusterIP", "10.0.0.1", vec![(80, "TCP")]),
+        )];
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "▎" {
+                    found = true;
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                }
+            }
+        }
+        assert!(found);
     }
 
     #[tokio::test]

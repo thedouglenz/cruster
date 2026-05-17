@@ -6,12 +6,13 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Node;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 
 #[derive(Debug, Default)]
@@ -42,9 +43,9 @@ impl ResourceView for NodesView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec!["", "NAME", "STATUS", "ROLES", "VERSION", "OS-IMAGE"])
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -63,7 +64,7 @@ impl ResourceView for NodesView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -211,6 +212,35 @@ mod tests {
     fn node_status_returns_notready_for_false_ready_condition() {
         let n = make_node_with_condition("n1", "Ready", "False");
         assert_eq!(node_status(&n), "NotReady");
+    }
+
+    #[test]
+    fn render_selected_row_uses_themes_selection_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = NodesView::new();
+        let n = make_node_with_condition("n1", "Ready", "True");
+        view.snapshot = vec![(ResourceKey::cluster_scoped("Node", "n1"), n)];
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                let cell = &buf[(x, y)];
+                if cell.symbol() == "▎" {
+                    found = true;
+                    assert_eq!(cell.style().fg, Some(want));
+                }
+            }
+        }
+        assert!(found);
     }
 
     #[test]

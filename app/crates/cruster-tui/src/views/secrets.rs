@@ -11,12 +11,13 @@ use cruster_core::ResourceKey;
 use cruster_kube::StoreRegistry;
 use k8s_openapi::api::core::v1::Secret;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table};
 use ratatui::Frame;
 
 use crate::app::LoopState;
 use crate::overlays::search::Filter;
+use crate::theme::Theme;
 use crate::view::ResourceView;
 use crate::views::configmaps::metadata_age;
 
@@ -47,9 +48,9 @@ impl ResourceView for SecretsView {
         }
     }
 
-    fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let header = Row::new(vec!["", "NAMESPACE", "NAME", "TYPE", "DATA", "AGE"])
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot
@@ -69,7 +70,7 @@ impl ResourceView for SecretsView {
                 if i == self.selected {
                     row.style(
                         Style::default()
-                            .fg(Color::Cyan)
+                            .fg(theme.selection_fg.as_ratatui())
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -201,6 +202,32 @@ mod tests {
         assert_eq!(secret_type(&s), "Opaque");
     }
 
+    #[test]
+    fn render_selected_row_uses_themes_selection_fg() {
+        let secret = make_secret_with_data("s", vec![]);
+        let key = ResourceKey::namespaced("Secret", "default", "s");
+        let mut view = SecretsView::new();
+        view.snapshot = vec![(key, secret)];
+
+        let theme = crate::theme::Theme::embedded("solarized-light").unwrap();
+        let want = theme.selection_fg.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "▎" {
+                    found = true;
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                }
+            }
+        }
+        assert!(found);
+    }
+
     /// Critical invariant test: the rendered TUI output must never
     /// contain any secret value, even base64-encoded or otherwise
     /// transformed. This test renders the view and verifies the
@@ -221,7 +248,8 @@ mod tests {
 
         let backend = TestBackend::new(120, 10);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| view.render(f, f.area())).unwrap();
+        let theme = crate::theme::Theme::terminal_default();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
         let rendered = buffer_as_string(terminal.backend().buffer());
 
         assert!(

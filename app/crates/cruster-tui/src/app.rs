@@ -962,7 +962,7 @@ impl App {
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(view_area);
-            self.current_view.render(frame, chunks[0]);
+            self.current_view.render(frame, chunks[0], &self.theme);
             if self.describe_pane.is_open() {
                 self.describe_pane
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Describe);
@@ -971,7 +971,7 @@ impl App {
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Logs);
             }
         } else {
-            self.current_view.render(frame, view_area);
+            self.current_view.render(frame, view_area, &self.theme);
         }
         self.render_safety_badge(frame);
         self.render_action_footer(frame);

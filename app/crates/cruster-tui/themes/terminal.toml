@@ -4,6 +4,9 @@ command_bg = "darkgray"
 search_bg = "blue"
 toast_bg = "red"
 selected_bg = "darkgray"
+selection_fg = "cyan"
+header_fg = "darkgray"
+muted_fg = "darkgray"
 
 # Env band is the most safety-critical badge — never let it be invisible.
 [env_band]
@@ -12,3 +15,20 @@ staging = "yellow"
 dev = "green"
 local = "cyan"
 unknown = "darkgray"
+
+[status]
+running = "green"
+pending = "yellow"
+failed = "red"
+succeeded = "blue"
+unknown = "darkgray"
+
+[sparkline]
+primary = "green"
+warn = "yellow"
+danger = "red"
+
+[gauge]
+ok = "green"
+warn = "yellow"
+danger = "red"

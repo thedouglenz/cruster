@@ -4,6 +4,9 @@ command_bg = "#3c3836"
 search_bg = "#458588"
 toast_bg = "#cc241d"
 selected_bg = "#504945"
+selection_fg = "#83a598"
+header_fg = "#a89984"
+muted_fg = "#7c6f64"
 
 [env_band]
 prod = "#cc241d"
@@ -11,3 +14,20 @@ staging = "#d79921"
 dev = "#98971a"
 local = "#689d6a"
 unknown = "#7c6f64"
+
+[status]
+running = "#98971a"
+pending = "#d79921"
+failed = "#cc241d"
+succeeded = "#458588"
+unknown = "#7c6f64"
+
+[sparkline]
+primary = "#98971a"
+warn = "#d79921"
+danger = "#cc241d"
+
+[gauge]
+ok = "#98971a"
+warn = "#d79921"
+danger = "#cc241d"

@@ -103,7 +103,13 @@ mod tests {
             "dummy"
         }
         async fn refresh(&mut self, _registry: &StoreRegistry) {}
-        fn render(&self, _frame: &mut Frame<'_>, _area: ratatui::layout::Rect) {}
+        fn render(
+            &self,
+            _frame: &mut Frame<'_>,
+            _area: ratatui::layout::Rect,
+            _theme: &crate::theme::Theme,
+        ) {
+        }
         fn handle_key(&mut self, _key: crossterm::event::KeyEvent) -> crate::app::LoopState {
             crate::app::LoopState::Continue
         }
