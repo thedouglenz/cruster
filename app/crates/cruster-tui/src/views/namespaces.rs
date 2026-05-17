@@ -95,11 +95,9 @@ impl ResourceView for NamespacesView {
             return LoopState::Continue;
         }
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                if !self.snapshot.is_empty() {
-                    let max = self.snapshot.len() - 1;
-                    self.selected = (self.selected + 1).min(max);
-                }
+            KeyCode::Char('j') | KeyCode::Down if !self.snapshot.is_empty() => {
+                let max = self.snapshot.len() - 1;
+                self.selected = (self.selected + 1).min(max);
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.selected = self.selected.saturating_sub(1);

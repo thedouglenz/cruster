@@ -53,7 +53,7 @@ impl History {
             .iter()
             .map(|(k, v)| (k.clone(), v.last_visited_step))
             .collect();
-        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        entries.sort_by_key(|a| a.1);
         let drop_n = self.items.len() - self.cap.max(1);
         for (k, _) in entries.into_iter().take(drop_n) {
             self.items.remove(&k);

@@ -36,7 +36,7 @@ impl ResourceView for EventsView {
 
     async fn refresh(&mut self, registry: &StoreRegistry) {
         let mut snap = registry.events.snapshot().await;
-        snap.sort_by(|a, b| event_time(&b.1).cmp(&event_time(&a.1)));
+        snap.sort_by_key(|b| std::cmp::Reverse(event_time(&b.1)));
         self.snapshot = crate::overlays::search::apply(&self.filter, snap, |e| e.type_.clone());
         if self.selected > 0 && self.selected >= self.snapshot.len() {
             self.selected = self.snapshot.len().saturating_sub(1);
@@ -109,11 +109,9 @@ impl ResourceView for EventsView {
             return LoopState::Continue;
         }
         match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                if !self.snapshot.is_empty() {
-                    let max = self.snapshot.len() - 1;
-                    self.selected = (self.selected + 1).min(max);
-                }
+            KeyCode::Char('j') | KeyCode::Down if !self.snapshot.is_empty() => {
+                let max = self.snapshot.len() - 1;
+                self.selected = (self.selected + 1).min(max);
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.selected = self.selected.saturating_sub(1);
