@@ -52,13 +52,16 @@ gh release view "v$NEW_VERSION" --json assets --jq '.assets[].name'
 # Download each .sha256 file:
 gh release download "v$NEW_VERSION" --pattern '*.sha256'
 cat cruster-${NEW_VERSION}-aarch64-apple-darwin.tar.gz.sha256
-cat cruster-${NEW_VERSION}-x86_64-apple-darwin.tar.gz.sha256
 cat cruster-${NEW_VERSION}-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
+> macOS Intel (`x86_64-apple-darwin`) is not built — GitHub Actions
+> retired the `macos-13` runners and there is no other free Intel
+> macOS path. Intel users build from source via `cargo install`.
+
 ### 2. Update `Formula/cruster.rb`
 
-Bump `version`. Replace the three `REPLACE_WITH_SHA256_AFTER_RELEASE`
+Bump `version`. Replace the two `REPLACE_WITH_SHA256_AFTER_RELEASE`
 strings with the SHA256s from above.
 
 Run `ruby -c Formula/cruster.rb` to confirm the file still parses.

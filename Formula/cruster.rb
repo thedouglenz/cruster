@@ -21,13 +21,12 @@ class Cruster < Formula
   # identifier that matches, so we declare a freeform string.
   license "Proprietary"
 
+  # macOS Intel users: build from source with `cargo install --git ...`.
+  # macos-13 runners are deprecated on GitHub Actions, so prebuilts
+  # are not published for x86_64-apple-darwin.
   on_macos do
     on_arm do
       url "https://github.com/thedouglenz/cruster/releases/download/v#{version}/cruster-#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
-    end
-    on_intel do
-      url "https://github.com/thedouglenz/cruster/releases/download/v#{version}/cruster-#{version}-x86_64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_SHA256_AFTER_RELEASE"
     end
   end
