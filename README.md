@@ -159,6 +159,16 @@ Slash commands:
 
 See `plugins/claude-code/README.md` for details.
 
+## License
+
+Cruster is proprietary software. See [`LICENSE`](LICENSE) for the
+full terms. In short: download and run unmodified for evaluation or
+end use, but redistribution, modification, hosting as a service, or
+any other use beyond running the binary requires written permission
+from the copyright holder. Contributions are accepted on an
+inbound = outbound basis under the same proprietary terms — see
+section 4 of `LICENSE`.
+
 ## Project layout
 
 ```
