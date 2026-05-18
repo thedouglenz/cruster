@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
-use cruster_kube::StoreRegistry;
+use cruster_kube::{MetricsCache, StoreRegistry};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -86,6 +86,10 @@ pub struct DashboardView {
     config: DashboardConfig,
     selected: usize,
     summary: Summary,
+    /// Latest snapshot from the metrics-server poller. Cloned out of
+    /// the registry-shared cache on each refresh so the render path
+    /// doesn't have to await a lock.
+    metrics: MetricsCache,
     history: VecDeque<Sample>,
     last_sample_at: Option<Instant>,
     pin_snapshots: Vec<PinSnapshot>,
@@ -108,6 +112,7 @@ impl Default for DashboardView {
             config: DashboardConfig::load_or_default(),
             selected: 0,
             summary: Summary::default(),
+            metrics: MetricsCache::Initializing,
             history: VecDeque::with_capacity(HISTORY_CAP),
             last_sample_at: None,
             pin_snapshots: Vec::new(),
@@ -145,16 +150,6 @@ impl DashboardView {
         self.history.push_back(sample);
     }
 
-    /// How tall the pins band wants to be, given current width.
-    /// Driven by the tile grid that fits at this width.
-    fn pins_band_height(&self, available_width: u16) -> u16 {
-        if self.config.pins.is_empty() {
-            return 2;
-        }
-        let cols = tile_cols_that_fit(available_width).max(1);
-        let rows = self.config.pins.len().div_ceil(cols);
-        (rows as u16).saturating_mul(TILE_H) + 1
-    }
 }
 
 /// How many tile columns fit in `width` accounting for gutters.
@@ -180,6 +175,7 @@ impl ResourceView for DashboardView {
         let events = registry.events.snapshot().await;
 
         self.summary = summarise(&pods, &deployments, &services, &nodes, &namespaces, &events);
+        self.metrics = registry.node_metrics.read().await.clone();
 
         // Resolve each pin against the live snapshots.
         self.pin_snapshots = self
@@ -218,23 +214,20 @@ impl ResourceView for DashboardView {
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        // Pins band wants as much room as its tile grid needs, but
-        // never more than half the screen — trends + summary still
-        // matter. Floor at TILE_H+1 so at least one tile-row fits.
-        let pins_h = self
-            .pins_band_height(area.width)
-            .min(area.height / 2)
-            .max(if self.config.pins.is_empty() {
-                2
-            } else {
-                TILE_H + 1
-            });
+        // Summary + trends get their requested fixed lengths; pins
+        // gets the remainder (down to a 2-row floor). The pin tile
+        // grid already auto-flows and shows a "+N more" hint when
+        // some tiles get clipped, so handing it the remainder rather
+        // than `Min(pins_h)` keeps the cluster-identity numbers and
+        // trends band from being squeezed on tall pin lists.
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(4), // summary band (top border + 2 lines + 1 padding)
+                // Summary band: top border + identity line + scale
+                // line + CPU bar + MEM bar + 1 padding = 6 rows.
+                Constraint::Length(6),
                 Constraint::Length(9), // trends band: top border + title + 6 chart rows + axis
-                Constraint::Min(pins_h),
+                Constraint::Min(2),
             ])
             .split(area);
 
@@ -329,7 +322,13 @@ impl DashboardView {
             Style::default().fg(theme.muted_fg.as_ratatui()),
         )]);
 
-        let para = Paragraph::new(vec![line1, line2]).block(
+        // Lines 3-4: cluster CPU / MEM utilisation from metrics-server.
+        // Drawn as ASCII bar gauges so they sit naturally in the
+        // summary band's text flow without fighting the trends-band
+        // chart aesthetic below.
+        let (line3, line4) = utilisation_lines(&self.metrics, area.width, theme);
+
+        let para = Paragraph::new(vec![line1, line2, line3, line4]).block(
             Block::default()
                 .borders(Borders::TOP)
                 .title(format!(" pulse · {} pins ", self.config.pins.len())),
@@ -717,10 +716,28 @@ fn pod_visual(pod: Option<&Pod>, theme: &Theme) -> TileVisual {
         .and_then(|s| s.container_statuses.as_ref())
         .map(|cs| cs.iter().map(|c| c.restart_count).sum())
         .unwrap_or(0);
-    TileVisual::Status {
-        big: phase.clone(),
+    // Gauge value = container ready ratio. Color combines phase +
+    // ratio so a 0/1 Failed pod is unmistakably red and a 1/1
+    // Running pod is green, even though the underlying number
+    // could be the same (100%).
+    let percent = if total > 0 {
+        ((ready as f64 / total as f64) * 100.0).round() as u8
+    } else {
+        0
+    };
+    let color = match phase.as_str() {
+        "Failed" => theme.gauge.danger.as_ratatui(),
+        "Pending" => theme.gauge.warn.as_ratatui(),
+        "Succeeded" => theme.muted_fg.as_ratatui(),
+        "Running" if percent >= 100 => theme.gauge.ok.as_ratatui(),
+        "Running" => theme.gauge.warn.as_ratatui(),
+        _ => theme.muted_fg.as_ratatui(),
+    };
+    TileVisual::Gauge {
+        percent,
+        value_text: phase,
         sub: format!("{ready}/{total} ready · {restarts} restarts"),
-        color: phase_color_for(&phase, theme),
+        color,
     }
 }
 
@@ -759,13 +776,14 @@ fn node_visual(node: Option<&Node>, theme: &Theme) -> TileVisual {
         return TileVisual::Loading;
     };
     let ready = node_is_ready(n);
-    let (status, color) = if ready {
-        ("Ready", theme.status.running.as_ratatui())
+    let (status, color, percent) = if ready {
+        ("Ready", theme.gauge.ok.as_ratatui(), 100u8)
     } else {
-        ("NotReady", theme.status.failed.as_ratatui())
+        ("NotReady", theme.gauge.danger.as_ratatui(), 0u8)
     };
-    TileVisual::Status {
-        big: status.into(),
+    TileVisual::Gauge {
+        percent,
+        value_text: status.into(),
         sub: String::new(),
         color,
     }
@@ -999,6 +1017,166 @@ fn compact_pin_summary(pin: &Pin, snap: Option<&PinSnapshot>) -> String {
     }
 }
 
+/// Build the two utilisation lines that sit under the scale line in
+/// the summary band. Returns `(cpu_line, mem_line)`. When metrics-
+/// server isn't available, both lines collapse: the CPU slot carries
+/// the muted fallback message and the MEM slot is blank.
+fn utilisation_lines<'a>(
+    cache: &MetricsCache,
+    area_width: u16,
+    theme: &Theme,
+) -> (Line<'a>, Line<'a>) {
+    let muted = Style::default().fg(theme.muted_fg.as_ratatui());
+    match cache {
+        MetricsCache::Initializing => (
+            Line::from(Span::styled("metrics-server …", muted)),
+            Line::from(""),
+        ),
+        MetricsCache::Unavailable { reason } => (
+            Line::from(Span::styled(reason.clone(), muted)),
+            Line::from(""),
+        ),
+        MetricsCache::Available {
+            cpu_used_cores,
+            cpu_capacity_cores,
+            mem_used_bytes,
+            mem_capacity_bytes,
+            ..
+        } => {
+            let bar_w = bar_width_for(area_width);
+            let cpu = build_utilisation_line(
+                "CPU",
+                *cpu_used_cores,
+                *cpu_capacity_cores,
+                &format!(
+                    "{} / {} cores",
+                    format_cores(*cpu_used_cores),
+                    format_cores(*cpu_capacity_cores)
+                ),
+                bar_w,
+                theme,
+            );
+            let mem = build_utilisation_line(
+                "MEM",
+                *mem_used_bytes as f64,
+                *mem_capacity_bytes as f64,
+                &format!(
+                    "{} / {}",
+                    format_bytes(*mem_used_bytes),
+                    format_bytes(*mem_capacity_bytes)
+                ),
+                bar_w,
+                theme,
+            );
+            (cpu, mem)
+        }
+    }
+}
+
+/// Width of the ASCII bar based on terminal width. Aims for a bar
+/// that's roughly half the row, leaving room for the label, percent,
+/// and `used / capacity` readout.
+fn bar_width_for(area_width: u16) -> usize {
+    // Leave ~36 chars for the label / percent / readout suffixes.
+    let reserved = 36u16;
+    let candidate = area_width.saturating_sub(reserved);
+    candidate.clamp(8, 30) as usize
+}
+
+fn build_utilisation_line<'a>(
+    label: &str,
+    used: f64,
+    capacity: f64,
+    suffix: &str,
+    bar_w: usize,
+    theme: &Theme,
+) -> Line<'a> {
+    let pct = if capacity > 0.0 {
+        ((used / capacity) * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    };
+    let pct_u = pct.round() as u8;
+    let zone_color = utilisation_zone_color(pct_u, theme);
+    let bar = ascii_bar(pct_u, bar_w);
+    Line::from(vec![
+        Span::styled(
+            format!("{label}  "),
+            Style::default().fg(theme.muted_fg.as_ratatui()),
+        ),
+        Span::styled(
+            format!("{:>3}%  ", pct_u),
+            Style::default()
+                .fg(zone_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(bar, Style::default().fg(zone_color)),
+        Span::styled(
+            format!("  {suffix}"),
+            Style::default().fg(theme.muted_fg.as_ratatui()),
+        ),
+    ])
+}
+
+/// Filled/empty unicode block bar. `█` for filled, `░` for empty.
+fn ascii_bar(pct: u8, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let filled = (pct as usize * width).div_ceil(100).min(width);
+    let mut s = String::with_capacity(width * 3);
+    for _ in 0..filled {
+        s.push('█');
+    }
+    for _ in 0..(width - filled) {
+        s.push('░');
+    }
+    s
+}
+
+/// Zone colour for a 0-100 utilisation percentage. Matches the
+/// "ok / warn / danger" idiom from `theme.gauge` used by pin tiles.
+fn utilisation_zone_color(pct: u8, theme: &Theme) -> Color {
+    if pct >= 90 {
+        theme.gauge.danger.as_ratatui()
+    } else if pct >= 75 {
+        theme.gauge.warn.as_ratatui()
+    } else {
+        theme.gauge.ok.as_ratatui()
+    }
+}
+
+/// Format CPU cores with sensible precision: integer cores when the
+/// value is large, two decimal places when small (so we don't show
+/// "0" for a sub-core sample).
+fn format_cores(cores: f64) -> String {
+    if cores >= 10.0 {
+        format!("{:.0}", cores)
+    } else {
+        format!("{:.2}", cores)
+    }
+}
+
+/// Format a byte count using binary (1024) units, like `kubectl top`.
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{bytes} B")
+    } else if v >= 100.0 {
+        format!("{v:.0} {}", UNITS[i])
+    } else if v >= 10.0 {
+        format!("{v:.1} {}", UNITS[i])
+    } else {
+        format!("{v:.2} {}", UNITS[i])
+    }
+}
+
 fn truncate_label(s: &str, max_chars: u16) -> String {
     let max = max_chars as usize;
     if s.chars().count() <= max {
@@ -1012,15 +1190,6 @@ fn truncate_label(s: &str, max_chars: u16) -> String {
     out
 }
 
-fn phase_color_for(phase: &str, theme: &Theme) -> Color {
-    match phase {
-        "Running" => theme.status.running.as_ratatui(),
-        "Pending" => theme.status.pending.as_ratatui(),
-        "Failed" => theme.status.failed.as_ratatui(),
-        "Succeeded" => theme.status.succeeded.as_ratatui(),
-        _ => theme.status.unknown.as_ratatui(),
-    }
-}
 
 fn summarise(
     pods: &[(ResourceKey, Pod)],
@@ -1315,6 +1484,99 @@ mod tests {
         assert_eq!(view_id_for_kind("Pod"), Some("pods"));
         assert_eq!(view_id_for_kind("Deployment"), Some("deployments"));
         assert_eq!(view_id_for_kind("CustomResource"), None);
+    }
+
+    #[test]
+    fn render_metrics_available_shows_cpu_and_mem_lines() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use std::time::SystemTime;
+
+        let mut v = DashboardView::new();
+        v.metrics = MetricsCache::Available {
+            cpu_used_cores: 1.5,
+            cpu_capacity_cores: 4.0,
+            mem_used_bytes: 2 * 1024 * 1024 * 1024,
+            mem_capacity_bytes: 8 * 1024 * 1024 * 1024,
+            sampled_at: SystemTime::now(),
+        };
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(80, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| v.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let text = buffer_to_string(buf);
+        assert!(text.contains("CPU"), "expected CPU label in:\n{text}");
+        assert!(text.contains("MEM"), "expected MEM label in:\n{text}");
+        // 1.5 / 4 cores = 38% CPU, 2 / 8 GiB = 25% MEM.
+        assert!(text.contains("38%"), "expected 38% in:\n{text}");
+        assert!(text.contains("25%"), "expected 25% in:\n{text}");
+        assert!(
+            text.contains("1.50 / 4.00 cores"),
+            "expected cores readout in:\n{text}"
+        );
+        assert!(text.contains("GiB"), "expected GiB readout in:\n{text}");
+    }
+
+    #[test]
+    fn render_metrics_unavailable_shows_muted_fallback() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut v = DashboardView::new();
+        v.metrics = MetricsCache::Unavailable {
+            reason: "metrics-server not installed".into(),
+        };
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(80, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| v.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let text = buffer_to_string(buf);
+        assert!(
+            text.contains("metrics-server not installed"),
+            "expected fallback message in:\n{text}"
+        );
+        // No percent value should be rendered when unavailable.
+        assert!(!text.contains('%'), "did not expect a % readout in:\n{text}");
+    }
+
+    fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn ascii_bar_widths_round_to_filled() {
+        assert_eq!(ascii_bar(0, 10), "░░░░░░░░░░");
+        assert_eq!(ascii_bar(100, 10), "██████████");
+        assert_eq!(ascii_bar(50, 10), "█████░░░░░");
+        // 1% in a 10-cell bar should still show at least 1 filled cell.
+        assert_eq!(ascii_bar(1, 10).chars().next(), Some('█'));
+    }
+
+    #[test]
+    fn format_bytes_uses_binary_units() {
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1024), "1.00 KiB");
+        assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
+        assert_eq!(format_bytes(2 * 1024 * 1024 * 1024), "2.00 GiB");
+        assert_eq!(format_bytes(150 * 1024), "150 KiB");
+    }
+
+    #[test]
+    fn format_cores_picks_appropriate_precision() {
+        assert_eq!(format_cores(0.05), "0.05");
+        assert_eq!(format_cores(1.5), "1.50");
+        assert_eq!(format_cores(42.0), "42");
     }
 
     #[tokio::test]

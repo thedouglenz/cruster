@@ -1,7 +1,7 @@
 use anyhow::Context;
 use cruster_kube::{
-    run_watcher, ConfigMaps, Deployments, Events, Namespaces, Nodes, Pods, ResourceKind,
-    ResourceStore, Secrets, Services, StoreRegistry,
+    run_metrics_poller, run_watcher, ConfigMaps, Deployments, Events, Namespaces, Nodes, Pods,
+    ResourceKind, ResourceStore, Secrets, Services, StoreRegistry, DEFAULT_POLL_INTERVAL,
 };
 use cruster_tui::App;
 use kube::Client;
@@ -45,6 +45,16 @@ async fn main() -> anyhow::Result<()> {
     spawn_watcher::<ConfigMaps>(client.clone(), registry.configmaps.clone());
     spawn_watcher::<Secrets>(client.clone(), registry.secrets.clone());
     spawn_watcher::<Namespaces>(client.clone(), registry.namespaces.clone());
+
+    // metrics-server poller — degrades to MetricsCache::Unavailable
+    // on clusters without the addon. First tick fires immediately
+    // (tokio::time::interval ticks at t=0 by default).
+    tokio::spawn(run_metrics_poller(
+        client.clone(),
+        registry.nodes.clone(),
+        registry.node_metrics.clone(),
+        DEFAULT_POLL_INTERVAL,
+    ));
 
     let mut app = App::new(registry, Some(client));
     app.run().await
