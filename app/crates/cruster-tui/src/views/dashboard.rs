@@ -20,7 +20,7 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
@@ -41,18 +41,17 @@ const TILE_GUTTER_X: u16 = 1;
 
 #[derive(Debug, Default, Clone)]
 struct Summary {
+    /// kubelet version of the first node we saw, e.g. "v1.32.0".
+    /// `None` if no nodes are in the registry (rare; before first
+    /// watch sync). Used as a proxy for "cluster version" since we
+    /// don't query the apiserver `/version` endpoint.
+    k8s_version: Option<String>,
     nodes_total: usize,
     nodes_ready: usize,
     namespaces: usize,
     pods_total: usize,
-    pods_running: usize,
-    pods_pending: usize,
-    pods_failed: usize,
-    pods_succeeded: usize,
     deployments_total: usize,
-    deployments_ready: usize,
     services: usize,
-    events_recent: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -90,6 +89,9 @@ pub struct DashboardView {
     history: VecDeque<Sample>,
     last_sample_at: Option<Instant>,
     pin_snapshots: Vec<PinSnapshot>,
+    /// Kubeconfig current-context name, resolved once at construction.
+    /// Used for the cluster-identity line in the summary band.
+    context_name: String,
     /// Set by `handle_key`; consumed by `App` after `handle_key`
     /// returns so we can switch views without holding a mutable
     /// reference to `App` inside the view.
@@ -109,6 +111,7 @@ impl Default for DashboardView {
             history: VecDeque::with_capacity(HISTORY_CAP),
             last_sample_at: None,
             pin_snapshots: Vec::new(),
+            context_name: current_kubeconfig_context(),
             pending_switch_id: None,
             _filter: Filter::default(),
         }
@@ -235,7 +238,7 @@ impl ResourceView for DashboardView {
             ])
             .split(area);
 
-        self.render_summary(frame, chunks[0]);
+        self.render_summary(frame, chunks[0], theme);
         self.render_trends(frame, chunks[1], theme);
         self.render_pins(frame, chunks[2], theme);
     }
@@ -292,24 +295,41 @@ impl ResourceView for DashboardView {
 }
 
 impl DashboardView {
-    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
+    /// Cluster identity card: who is this cluster, how big is it.
+    /// Counts are slow-moving here; volatile numbers (event rate,
+    /// restart rate, rollouts in flight) live in the trends band.
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
         let s = &self.summary;
-        let line1 = format!(
-            "nodes {}/{} ready · ns {} · pods {} (R{} P{} F{} S{})",
-            s.nodes_ready,
-            s.nodes_total,
-            s.namespaces,
-            s.pods_total,
-            s.pods_running,
-            s.pods_pending,
-            s.pods_failed,
-            s.pods_succeeded,
-        );
-        let line2 = format!(
-            "deploys {}/{} ready · svc {} · events {} recent",
-            s.deployments_ready, s.deployments_total, s.services, s.events_recent,
-        );
-        let para = Paragraph::new(vec![Line::from(line1), Line::from(line2)]).block(
+        let version = s.k8s_version.as_deref().unwrap_or("?");
+
+        // Line 1: cluster identity — name + version + node + namespace counts.
+        let line1 = Line::from(vec![
+            Span::styled("cluster ", Style::default().fg(theme.muted_fg.as_ratatui())),
+            Span::styled(
+                self.context_name.clone(),
+                Style::default()
+                    .fg(theme.header_fg.as_ratatui())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    " · {} · {}/{} nodes ready · {} ns",
+                    version, s.nodes_ready, s.nodes_total, s.namespaces,
+                ),
+                Style::default().fg(theme.muted_fg.as_ratatui()),
+            ),
+        ]);
+
+        // Line 2: scale — workload object counts. Movable but slow.
+        let line2 = Line::from(vec![Span::styled(
+            format!(
+                "{} pods · {} deployments · {} services",
+                s.pods_total, s.deployments_total, s.services
+            ),
+            Style::default().fg(theme.muted_fg.as_ratatui()),
+        )]);
+
+        let para = Paragraph::new(vec![line1, line2]).block(
             Block::default()
                 .borders(Borders::TOP)
                 .title(format!(" pulse · {} pins ", self.config.pins.len())),
@@ -1010,67 +1030,23 @@ fn summarise(
     namespaces: &[(ResourceKey, Namespace)],
     events: &[(ResourceKey, k8s_openapi::api::core::v1::Event)],
 ) -> Summary {
+    let _ = events; // event rate now lives in the trends band
     let nodes_total = nodes.len();
     let nodes_ready = nodes.iter().filter(|(_, n)| node_is_ready(n)).count();
-    let namespaces_count = namespaces.len();
-
-    let mut pods_running = 0;
-    let mut pods_pending = 0;
-    let mut pods_failed = 0;
-    let mut pods_succeeded = 0;
-    for (_, p) in pods {
-        match p
-            .status
+    let k8s_version = nodes.iter().find_map(|(_, n)| {
+        n.status
             .as_ref()
-            .and_then(|s| s.phase.as_deref())
-            .unwrap_or("")
-        {
-            "Running" => pods_running += 1,
-            "Pending" => pods_pending += 1,
-            "Failed" => pods_failed += 1,
-            "Succeeded" => pods_succeeded += 1,
-            _ => {}
-        }
-    }
-    let deployments_total = deployments.len();
-    let deployments_ready = deployments
-        .iter()
-        .filter(|(_, d)| {
-            let desired = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
-            let ready = d
-                .status
-                .as_ref()
-                .and_then(|s| s.ready_replicas)
-                .unwrap_or(0);
-            desired > 0 && ready >= desired
-        })
-        .count();
-    let services_count = services.len();
-
-    let cutoff = chrono::Utc::now() - chrono::Duration::minutes(5);
-    let events_recent = events
-        .iter()
-        .filter(|(_, e)| {
-            e.last_timestamp
-                .as_ref()
-                .map(|t| t.0 >= cutoff)
-                .unwrap_or(false)
-        })
-        .count();
-
+            .and_then(|s| s.node_info.as_ref())
+            .map(|info| info.kubelet_version.clone())
+    });
     Summary {
+        k8s_version,
         nodes_total,
         nodes_ready,
-        namespaces: namespaces_count,
+        namespaces: namespaces.len(),
         pods_total: pods.len(),
-        pods_running,
-        pods_pending,
-        pods_failed,
-        pods_succeeded,
-        deployments_total,
-        deployments_ready,
-        services: services_count,
-        events_recent,
+        deployments_total: deployments.len(),
+        services: services.len(),
     }
 }
 
@@ -1160,6 +1136,13 @@ fn container_ready_counts(pod: &Pod) -> (usize, usize) {
         .map(|c| c.as_slice())
         .unwrap_or(&[]);
     (cs.iter().filter(|c| c.ready).count(), cs.len())
+}
+
+fn current_kubeconfig_context() -> String {
+    kube::config::Kubeconfig::read()
+        .ok()
+        .and_then(|c| c.current_context)
+        .unwrap_or_else(|| "?".into())
 }
 
 fn node_is_ready(node: &Node) -> bool {
@@ -1261,7 +1244,6 @@ mod tests {
         let mut v = DashboardView::new();
         v.refresh(&registry).await;
         assert_eq!(v.history.len(), 1);
-        assert_eq!(v.summary.pods_running, 1);
         assert_eq!(v.summary.pods_total, 1);
     }
 
@@ -1304,7 +1286,7 @@ mod tests {
             for x in 0..buf.area().width {
                 line.push_str(buf[(x, y)].symbol());
             }
-            if line.contains("events / min") {
+            if line.contains("events/min") {
                 row_text = line;
                 // The label's first 'e' should carry the muted_fg color.
                 for x in 0..buf.area().width {
@@ -1319,7 +1301,7 @@ mod tests {
         }
         assert!(
             !row_text.is_empty(),
-            "expected to find a 'events / min' trend label"
+            "expected to find an 'events/min' trend label"
         );
         assert_eq!(
             row_fg,
@@ -1348,9 +1330,8 @@ mod tests {
         }
         let mut v = DashboardView::new();
         v.refresh(&registry).await;
-        assert_eq!(v.summary.pods_running, 2);
-        assert_eq!(v.summary.pods_pending, 1);
-        assert_eq!(v.summary.pods_failed, 1);
+        // The phase-bucket fields were folded into the trends band;
+        // the summary now just carries the totals.
         assert_eq!(v.summary.pods_total, 4);
     }
 }
