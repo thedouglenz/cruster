@@ -1,5 +1,6 @@
 //! CLI verb handlers (one module per verb).
 
+pub mod changed;
 pub mod describe;
 pub mod diff;
 pub mod events;
@@ -10,6 +11,7 @@ pub mod license;
 pub mod logs;
 pub mod schema;
 pub mod theme;
+pub mod timeline;
 pub mod trial;
 
 use crate::args::{Cli, Command};
@@ -27,5 +29,7 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Export(args) => export::run(&cli, args).await,
         Command::License(args) => license::run(args).await,
         Command::Trial => trial::run().await,
+        Command::Timeline(args) => timeline::run(&cli, args).await,
+        Command::Changed(args) => changed::run(&cli, args).await,
     }
 }

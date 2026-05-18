@@ -40,14 +40,73 @@ If you get an empty result, look for the sentinel line `{"matched":
 Streaming logs (only if you need lines newer than the export window):
 
 ```bash
-cruster logs <name> -n <namespace> --tail 500 --grep <pattern>
+cruster logs <name> -n <namespace> --tail 500
 ```
+
+Multi-pattern log scan with context — the dense-evidence call. Use
+this when you already know which symptoms to look for; one call
+replaces several `kubectl logs | grep` follow-ups:
+
+```bash
+cruster logs <name> -n <namespace> \
+  --grep auth='(?i)\b(401|403|unauthorized|invalid[\s_-]?api[\s_-]?key)\b' \
+  --grep panic='panic:|fatal error:|Traceback' \
+  --grep-literal netfail='connection refused' \
+  -A 3 -B 3 --previous --all-containers
+```
+
+- `--grep` is regex; `--grep-literal` is a substring (auto-escaped).
+  Both repeatable. Both accept `[name=]pattern` so each hit is tagged
+  with the probe that fired.
+- `-A`/`-B`/`--context` give grep-style context lines.
+- `--previous` also scans the previous container's logs (the last
+  crash) — usually where the actual crash output lives.
+- `--all-containers` fans out across every container in the pod.
+
+Output is NDJSON: one `{"hit": ...}` record per match (with `before` /
+`after` context and a negative-from-end `line_offset`), followed by
+one terminal `{"summary": ...}` record. Read the summary first — its
+`patterns_unhit` field lists every probe that came up empty, so you
+don't waste a follow-up call re-checking them.
 
 Pod state in machine form:
 
 ```bash
 cruster get pods <name> -n <namespace> --format ndjson | jq .
 ```
+
+Merged chronological timeline (events + derived restarts + referenced
+config rotations, in one ordered stream) — use when "what happened,
+in order?" is the question:
+
+```bash
+cruster timeline pod/<name> -n <namespace> --since 1h
+```
+
+Output is NDJSON: one record per fact, then one terminal
+`{"summary": ...}` carrying counts and `kinds_absent` (which probes
+came up empty). `--include restarted,oom_killed` narrows a noisy
+timeline. The `secret_rotated` / `configmap_changed` records are
+pulled from `managedFields[].time` so you see when a Secret was
+last updated even if k8s never emits an event for it — useful for
+"was it the secret rotation that broke us?" hypotheses.
+
+Recent namespace-wide changes — answers "what shifted in the last 30
+minutes?" without you having to compose `kubectl rollout history`,
+`kubectl get rs`, and managedFields walks yourself:
+
+```bash
+cruster changed -n <namespace> --since 30m
+```
+
+Reports `secret_rotated` / `configmap_changed` (with `consumed_by[]`
+listing every pod that references the rotated object), plus
+`replicaset_rolled`, `image_changed` (before/after image digests
+and revisions), and `resource_created` for new workloads/services in
+the window. NDJSON, most-recent-first, with a terminal `{"summary":
+...}` and the same `kinds_absent` negative-evidence field. This is
+the load-bearing call for "did something change just before things
+broke?"
 
 ## Discovery
 

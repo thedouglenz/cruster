@@ -8,9 +8,11 @@ use std::ffi::OsString;
 
 pub mod args;
 pub mod budget;
+pub mod envelope;
 pub mod format;
 pub mod output;
 pub mod prune;
+pub mod refs;
 pub mod schemas;
 pub mod verbs;
 

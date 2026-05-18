@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/changed/v1.json",
+  "title": "cruster changed (NDJSON record)",
+  "description": "What shifted in a namespace recently. Per-change records sorted most-recent-first, then one terminal `summary` record with counts and `kinds_absent` (negative-evidence field). v1 scope: secret_rotated, configmap_changed, replicaset_rolled, image_changed, resource_created (workloads + services).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "per-change record",
+      "required": ["at", "kind", "ref"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "secret_rotated",
+            "configmap_changed",
+            "replicaset_rolled",
+            "image_changed",
+            "resource_created"
+          ]
+        },
+        "ref": {
+          "type": "object",
+          "required": ["kind", "namespace", "name"],
+          "properties": {
+            "kind":      { "type": "string" },
+            "namespace": { "type": "string" },
+            "name":      { "type": "string" }
+          }
+        },
+        "before": {
+          "type": ["object", "null"],
+          "description": "Prior-state fields. For `image_changed`: { image?, rs, revision? }. Null for kinds without history (secret_rotated, configmap_changed, resource_created)."
+        },
+        "after": {
+          "type": ["object", "null"],
+          "description": "New-state fields. For `image_changed`: { image?, rs, revision? }. For `secret_rotated`/`configmap_changed`: { resource_version }. Null for kinds without an `after` payload."
+        },
+        "attrs": {
+          "type": ["object", "null"],
+          "description": "Kind-specific. `secret_rotated`/`configmap_changed`: { manager?, consumed_by[] }. `replicaset_rolled`: { owner, revision? }. `image_changed`: { container }."
+        }
+      }
+    },
+    {
+      "title": "terminal summary record (one per call)",
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": ["window", "scope", "counts", "kinds_absent", "truncated", "notes", "ms_total"],
+          "properties": {
+            "window": {
+              "type": "object",
+              "required": ["from", "to"],
+              "properties": {
+                "from": { "type": "string", "format": "date-time" },
+                "to":   { "type": "string", "format": "date-time" }
+              }
+            },
+            "scope": {
+              "type": "object",
+              "required": ["namespace"],
+              "properties": { "namespace": { "type": "string" } }
+            },
+            "counts": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1 }
+            },
+            "kinds_absent": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Kinds that produced zero records in this window. The calling agent should not re-check these."
+            },
+            "truncated": {
+              "type": "object",
+              "required": ["managed_fields_history"],
+              "properties": {
+                "managed_fields_history": {
+                  "type": "boolean",
+                  "description": "Always true in v1: kube does not preserve prior Secret/ConfigMap resourceVersion, so rotation records carry only the current `after.resource_version`."
+                }
+              }
+            },
+            "notes": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "ms_total": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  ]
+}

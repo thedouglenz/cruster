@@ -595,6 +595,7 @@ dependencies = [
  "is-terminal",
  "k8s-openapi",
  "kube",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",

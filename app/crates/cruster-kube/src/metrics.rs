@@ -271,7 +271,10 @@ mod tests {
             ..Default::default()
         };
         nodes
-            .upsert(cruster_core::ResourceKey::cluster_scoped("Node", "n1"), node)
+            .upsert(
+                cruster_core::ResourceKey::cluster_scoped("Node", "n1"),
+                node,
+            )
             .await;
         let (cpu, mem) = sum_node_capacity(&nodes).await;
         assert!((cpu - 4.0).abs() < 1e-9);
