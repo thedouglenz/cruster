@@ -27,6 +27,12 @@ pub struct Theme {
     #[serde(default)]
     pub env_band: EnvBand,
     #[serde(default)]
+    pub env_band_fg: EnvBandFg,
+    #[serde(default)]
+    pub mode: ModeColors,
+    #[serde(default)]
+    pub chip: ChipColors,
+    #[serde(default)]
     pub status: StatusColors,
     #[serde(default)]
     pub sparkline: SparklineColors,
@@ -56,6 +62,66 @@ impl Default for EnvBand {
             dev: default_dev(),
             local: default_local(),
             unknown: default_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnvBandFg {
+    #[serde(default = "default_env_band_fg_prod")]
+    pub prod: ThemeColor,
+    #[serde(default = "default_env_band_fg_staging")]
+    pub staging: ThemeColor,
+    #[serde(default = "default_env_band_fg_dev")]
+    pub dev: ThemeColor,
+    #[serde(default = "default_env_band_fg_local")]
+    pub local: ThemeColor,
+    #[serde(default = "default_env_band_fg_unknown")]
+    pub unknown: ThemeColor,
+}
+
+impl Default for EnvBandFg {
+    fn default() -> Self {
+        Self {
+            prod: default_env_band_fg_prod(),
+            staging: default_env_band_fg_staging(),
+            dev: default_env_band_fg_dev(),
+            local: default_env_band_fg_local(),
+            unknown: default_env_band_fg_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModeColors {
+    #[serde(default = "default_mode_rw")]
+    pub rw: ThemeColor,
+    #[serde(default = "default_mode_ro")]
+    pub ro: ThemeColor,
+}
+
+impl Default for ModeColors {
+    fn default() -> Self {
+        Self {
+            rw: default_mode_rw(),
+            ro: default_mode_ro(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChipColors {
+    #[serde(default = "default_chip_label_fg")]
+    pub label_fg: ThemeColor,
+    #[serde(default = "default_chip_value_fg")]
+    pub value_fg: ThemeColor,
+}
+
+impl Default for ChipColors {
+    fn default() -> Self {
+        Self {
+            label_fg: default_chip_label_fg(),
+            value_fg: default_chip_value_fg(),
         }
     }
 }
@@ -196,6 +262,33 @@ fn default_local() -> ThemeColor {
 fn default_unknown() -> ThemeColor {
     ThemeColor::Named("darkgray".into())
 }
+fn default_env_band_fg_prod() -> ThemeColor {
+    ThemeColor::Named("white".into())
+}
+fn default_env_band_fg_staging() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_dev() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_local() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_unknown() -> ThemeColor {
+    ThemeColor::Named("white".into())
+}
+fn default_mode_rw() -> ThemeColor {
+    ThemeColor::Named("red".into())
+}
+fn default_mode_ro() -> ThemeColor {
+    ThemeColor::Named("green".into())
+}
+fn default_chip_label_fg() -> ThemeColor {
+    ThemeColor::Named("cyan".into())
+}
+fn default_chip_value_fg() -> ThemeColor {
+    ThemeColor::Named("reset".into())
+}
 fn default_selection_fg() -> ThemeColor {
     ThemeColor::Named("cyan".into())
 }
@@ -314,5 +407,29 @@ mod tests {
             Color::DarkGray
         );
         assert_eq!(ThemeColor::Named("reset".into()).as_ratatui(), Color::Reset);
+    }
+
+    #[test]
+    fn chip_colors_defaults() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.chip.label_fg.as_ratatui(), Color::Cyan);
+        assert_eq!(t.chip.value_fg.as_ratatui(), Color::Reset);
+    }
+
+    #[test]
+    fn mode_colors_defaults() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.mode.rw.as_ratatui(), Color::Red);
+        assert_eq!(t.mode.ro.as_ratatui(), Color::Green);
+    }
+
+    #[test]
+    fn env_band_fg_defaults_pair_with_env_band_bgs() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.env_band_fg.prod.as_ratatui(), Color::White);
+        assert_eq!(t.env_band_fg.staging.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.dev.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.local.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.unknown.as_ratatui(), Color::White);
     }
 }

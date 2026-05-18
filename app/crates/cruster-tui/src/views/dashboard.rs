@@ -292,43 +292,16 @@ impl DashboardView {
     /// Counts are slow-moving here; volatile numbers (event rate,
     /// restart rate, rollouts in flight) live in the trends band.
     fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        let s = &self.summary;
-        let version = s.k8s_version.as_deref().unwrap_or("?");
+        // Identity + scale rows: k9s-style chip header (Task 6/7).
+        let header = build_header_chips(&self.summary, &self.context_name, theme, area.width);
+        // CPU / MEM rows: ASCII bar gauges from metrics-server.
+        let (cpu_line, mem_line) = utilisation_lines(&self.metrics, area.width, theme);
 
-        // Line 1: cluster identity — name + version + node + namespace counts.
-        let line1 = Line::from(vec![
-            Span::styled("cluster ", Style::default().fg(theme.muted_fg.as_ratatui())),
-            Span::styled(
-                self.context_name.clone(),
-                Style::default()
-                    .fg(theme.header_fg.as_ratatui())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(
-                    " · {} · {}/{} nodes ready · {} ns",
-                    version, s.nodes_ready, s.nodes_total, s.namespaces,
-                ),
-                Style::default().fg(theme.muted_fg.as_ratatui()),
-            ),
-        ]);
+        let mut lines = header;
+        lines.push(cpu_line);
+        lines.push(mem_line);
 
-        // Line 2: scale — workload object counts. Movable but slow.
-        let line2 = Line::from(vec![Span::styled(
-            format!(
-                "{} pods · {} deployments · {} services",
-                s.pods_total, s.deployments_total, s.services
-            ),
-            Style::default().fg(theme.muted_fg.as_ratatui()),
-        )]);
-
-        // Lines 3-4: cluster CPU / MEM utilisation from metrics-server.
-        // Drawn as ASCII bar gauges so they sit naturally in the
-        // summary band's text flow without fighting the trends-band
-        // chart aesthetic below.
-        let (line3, line4) = utilisation_lines(&self.metrics, area.width, theme);
-
-        let para = Paragraph::new(vec![line1, line2, line3, line4]).block(
+        let para = Paragraph::new(lines).block(
             Block::default()
                 .borders(Borders::TOP)
                 .title(format!(" pulse · {} pins ", self.config.pins.len())),
@@ -1200,6 +1173,105 @@ fn truncate_label(s: &str, max_chars: u16) -> String {
 }
 
 
+/// Builds the two `Line`s of the dashboard chip header (identity row +
+/// scale row). Pure — takes a snapshot of `Summary` and renders styled
+/// spans against `theme`. When `width` cannot fit all chips, trailing
+/// chips are dropped and a muted `…` is appended after the last
+/// fitting chip.
+fn build_header_chips(
+    summary: &Summary,
+    context_name: &str,
+    theme: &Theme,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let label_style = Style::default()
+        .fg(theme.chip.label_fg.as_ratatui())
+        .add_modifier(Modifier::BOLD);
+    let value_style = Style::default()
+        .fg(theme.chip.value_fg.as_ratatui())
+        .add_modifier(Modifier::BOLD);
+    let ellipsis_style = Style::default().fg(theme.muted_fg.as_ratatui());
+
+    let nodes_text = format!("{}/{} ready", summary.nodes_ready, summary.nodes_total);
+    let nodes_color = if summary.nodes_total == 0 {
+        theme.muted_fg.as_ratatui()
+    } else if summary.nodes_ready == summary.nodes_total {
+        theme.gauge.ok.as_ratatui()
+    } else if summary.nodes_ready == 0 {
+        theme.gauge.danger.as_ratatui()
+    } else {
+        theme.gauge.warn.as_ratatui()
+    };
+    let nodes_value_style = Style::default()
+        .fg(nodes_color)
+        .add_modifier(Modifier::BOLD);
+
+    let k8s_version = summary
+        .k8s_version
+        .clone()
+        .unwrap_or_else(|| "?".into());
+
+    let identity_chips: Vec<(&str, String, Style)> = vec![
+        ("CONTEXT ", context_name.to_string(), value_style),
+        ("K8S ", k8s_version, value_style),
+        ("NODES ", nodes_text, nodes_value_style),
+        ("NS ", summary.namespaces.to_string(), value_style),
+    ];
+    let scale_chips: Vec<(&str, String, Style)> = vec![
+        ("PODS ", summary.pods_total.to_string(), value_style),
+        ("DEPLOYS ", summary.deployments_total.to_string(), value_style),
+        ("SVCS ", summary.services.to_string(), value_style),
+    ];
+
+    let identity = fit_chips_into_line(&identity_chips, label_style, ellipsis_style, width);
+    let scale = fit_chips_into_line(&scale_chips, label_style, ellipsis_style, width);
+    vec![identity, scale]
+}
+
+/// Fit chips left-to-right within `width`. Drops trailing chips that
+/// don't fit and appends a muted `…` (only when at least one chip was
+/// placed and at least one chip was dropped, and the ellipsis itself
+/// fits).
+fn fit_chips_into_line(
+    chips: &[(&str, String, Style)],
+    label_style: Style,
+    ellipsis_style: Style,
+    width: u16,
+) -> Line<'static> {
+    let gap = "   ";
+    let gap_w = gap.chars().count();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used: usize = 0;
+    let mut placed = 0usize;
+
+    for (i, (label, value, value_style)) in chips.iter().enumerate() {
+        let chip_w = label.chars().count() + value.chars().count();
+        let needs_gap = i > 0;
+        let total_w = if needs_gap { gap_w + chip_w } else { chip_w };
+        if used + total_w > width as usize {
+            break;
+        }
+        if needs_gap {
+            spans.push(Span::raw(gap.to_string()));
+        }
+        spans.push(Span::styled(label.to_string(), label_style));
+        spans.push(Span::styled(value.clone(), *value_style));
+        used += total_w;
+        placed += 1;
+    }
+
+    let dropped = chips.len().saturating_sub(placed);
+    if dropped > 0 && placed > 0 {
+        let suffix_w = gap_w + 1; // gap + '…' (1 char)
+        if used + suffix_w <= width as usize {
+            spans.push(Span::raw(gap.to_string()));
+            spans.push(Span::styled("…".to_string(), ellipsis_style));
+        }
+    }
+
+    Line::from(spans)
+}
+
 fn summarise(
     pods: &[(ResourceKey, Pod)],
     deployments: &[(ResourceKey, Deployment)],
@@ -1561,6 +1633,115 @@ mod tests {
             out.push('\n');
         }
         out
+    }
+
+    fn make_summary(ready: usize, total: usize) -> Summary {
+        Summary {
+            k8s_version: Some("v1.31.1".into()),
+            nodes_total: total,
+            nodes_ready: ready,
+            namespaces: 11,
+            pods_total: 40,
+            deployments_total: 16,
+            services: 21,
+        }
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    fn line_span_with(line: &Line<'_>, needle: &str) -> Option<ratatui::text::Span<'static>> {
+        line.spans
+            .iter()
+            .find(|s| s.content.contains(needle))
+            .map(|s| ratatui::text::Span::styled(s.content.to_string(), s.style))
+    }
+
+    #[test]
+    fn build_header_chips_returns_two_lines_with_all_fields() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "my-ctx", &theme, 200);
+        assert_eq!(lines.len(), 2);
+        let l1 = line_text(&lines[0]);
+        let l2 = line_text(&lines[1]);
+        for needle in ["CONTEXT", "my-ctx", "K8S", "v1.31.1", "NODES", "3/3", "NS", "11"] {
+            assert!(l1.contains(needle), "line 1 missing {needle:?}: {l1:?}");
+        }
+        for needle in ["PODS", "40", "DEPLOYS", "16", "SVCS", "21"] {
+            assert!(l2.contains(needle), "line 2 missing {needle:?}: {l2:?}");
+        }
+    }
+
+    #[test]
+    fn build_header_chips_labels_use_chip_label_fg() {
+        let theme = crate::theme::Theme::terminal_default();
+        let lines = build_header_chips(&make_summary(3, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "CONTEXT").unwrap();
+        assert_eq!(span.style.fg, Some(theme.chip.label_fg.as_ratatui()));
+    }
+
+    #[test]
+    fn build_header_chips_nodes_value_color_zones() {
+        let theme = crate::theme::Theme::terminal_default();
+
+        let lines = build_header_chips(&make_summary(3, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "3/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.ok.as_ratatui()));
+
+        let lines = build_header_chips(&make_summary(1, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "1/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.warn.as_ratatui()));
+
+        let lines = build_header_chips(&make_summary(0, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "0/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.danger.as_ratatui()));
+    }
+
+    #[test]
+    fn render_summary_uses_chip_header() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut v = DashboardView::new();
+        v.config = DashboardConfig::default();
+        v.summary = make_summary(3, 3);
+        v.context_name = "my-ctx".into();
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(120, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_summary(f, f.area(), &theme))
+            .unwrap();
+        let text = buffer_to_string(terminal.backend().buffer());
+        for needle in [
+            "CONTEXT", "my-ctx", "K8S", "v1.31.1",
+            "NODES", "3/3", "NS", "11",
+            "PODS", "40", "DEPLOYS", "16", "SVCS", "21",
+        ] {
+            assert!(text.contains(needle), "summary missing {needle:?} in:\n{text}");
+        }
+    }
+
+    #[test]
+    fn build_header_chips_truncates_trailing_chips_when_narrow() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "ctx", &theme, 18);
+        let l1 = line_text(&lines[0]);
+        assert!(l1.contains("CONTEXT"), "CONTEXT must survive: {l1:?}");
+        assert!(l1.contains('…'), "ellipsis expected: {l1:?}");
+        assert!(!l1.contains("K8S"), "K8S should be dropped: {l1:?}");
+    }
+
+    #[test]
+    fn build_header_chips_truncation_ellipsis_uses_muted_fg() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "ctx", &theme, 18);
+        let span = line_span_with(&lines[0], "…").unwrap();
+        assert_eq!(span.style.fg, Some(theme.muted_fg.as_ratatui()));
     }
 
     #[test]

@@ -13,7 +13,8 @@ use cruster_kube::StoreRegistry;
 use kube::Client;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use ratatui::Terminal;
@@ -983,22 +984,105 @@ impl App {
 
     fn render_safety_badge(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
-        let mode = if self.read_only { "ro" } else { "rw" };
-        let label = format!(
-            " [{}] {} {} · layout:{} ",
-            self.context,
-            self.environment,
-            mode,
-            self.layout.label()
-        );
-        let color = match self.environment {
+        if area.height == 0 || area.width == 0 {
+            return;
+        }
+        let env = self.environment;
+        let bg = match env {
             Environment::Prod => self.theme.env_band.prod.as_ratatui(),
             Environment::Staging => self.theme.env_band.staging.as_ratatui(),
             Environment::Dev => self.theme.env_band.dev.as_ratatui(),
             Environment::Local => self.theme.env_band.local.as_ratatui(),
             Environment::Unknown => self.theme.env_band.unknown.as_ratatui(),
         };
-        let bar = Paragraph::new(label).style(Style::default().bg(color).fg(Color::Black));
+        let env_fg = match env {
+            Environment::Prod => self.theme.env_band_fg.prod.as_ratatui(),
+            Environment::Staging => self.theme.env_band_fg.staging.as_ratatui(),
+            Environment::Dev => self.theme.env_band_fg.dev.as_ratatui(),
+            Environment::Local => self.theme.env_band_fg.local.as_ratatui(),
+            Environment::Unknown => self.theme.env_band_fg.unknown.as_ratatui(),
+        };
+        let muted_fg = self.theme.muted_fg.as_ratatui();
+        let mode_color = if self.read_only {
+            self.theme.mode.ro.as_ratatui()
+        } else {
+            self.theme.mode.rw.as_ratatui()
+        };
+        let mode_text = if self.read_only { "RO" } else { "RW" };
+        let env_text = self.environment.to_string().to_uppercase();
+        let layout_text = self.layout.label().to_string();
+
+        let sep_style = Style::default().bg(bg).fg(muted_fg);
+        let value_style = Style::default()
+            .bg(bg)
+            .fg(env_fg)
+            .add_modifier(Modifier::BOLD);
+        let bracket_style = Style::default().bg(bg).fg(muted_fg);
+        let mode_style = Style::default()
+            .bg(bg)
+            .fg(mode_color)
+            .add_modifier(Modifier::BOLD);
+        let muted_on_bg = Style::default().bg(bg).fg(muted_fg);
+
+        // Width budgeting — keep the mode chip visible at all costs.
+        // Reserved cost (always rendered): leading sep + sep after ctx
+        // + mode chip + trailing sep after mode chip = 3+3+4+3 = 13.
+        // Whatever remains gets spent on ctx (truncated if needed),
+        // then optionally env (sep+env_w), then optionally layout
+        // (sep+layout_w).
+        let width = area.width as usize;
+        let sep_w = 3usize;
+        let mode_w = 4usize;
+        let reserved = sep_w + sep_w + mode_w + sep_w;
+
+        let sep = Span::styled(" │ ", sep_style);
+
+        let spans: Vec<Span<'static>> = if width <= reserved {
+            // Degenerate width: render only the mode chip.
+            vec![
+                Span::styled("[", bracket_style),
+                Span::styled(mode_text.to_string(), mode_style),
+                Span::styled("]", bracket_style),
+            ]
+        } else {
+            let mut budget = width - reserved;
+            let mut ctx_render = self.context.clone();
+            let ctx_w = ctx_render.chars().count();
+            if ctx_w <= budget {
+                budget -= ctx_w;
+            } else {
+                ctx_render = truncate_with_ellipsis(&ctx_render, budget);
+                budget = 0;
+            }
+            let env_w = env_text.chars().count();
+            let layout_w = layout_text.chars().count();
+            let include_env = budget >= sep_w + env_w;
+            if include_env {
+                budget -= sep_w + env_w;
+            }
+            let include_layout = budget >= sep_w + layout_w;
+
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            spans.push(sep.clone());
+            spans.push(Span::styled(ctx_render, value_style));
+            spans.push(sep.clone());
+            if include_env {
+                spans.push(Span::styled(env_text, value_style));
+                spans.push(sep.clone());
+            }
+            spans.push(Span::styled("[", bracket_style));
+            spans.push(Span::styled(mode_text.to_string(), mode_style));
+            spans.push(Span::styled("]", bracket_style));
+            spans.push(sep.clone());
+            if include_layout {
+                spans.push(Span::styled(layout_text, muted_on_bg));
+                spans.push(sep);
+            }
+            spans
+        };
+
+        let line = Line::from(spans);
+        let bar = Paragraph::new(line).style(Style::default().bg(bg));
         let rect = Rect {
             x: area.x,
             y: area.y,
@@ -1103,6 +1187,22 @@ fn chrome_inset(area: Rect) -> Rect {
         width: area.width,
         height,
     }
+}
+
+fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    if max_chars == 1 {
+        return "…".into();
+    }
+    let mut out: String = s.chars().take(max_chars - 1).collect();
+    out.push('…');
+    out
 }
 
 fn format_action_hint(key: KeyCode, label: &str) -> String {
@@ -1276,8 +1376,14 @@ mod tests {
 
     #[test]
     fn footer_renders_applicable_actions() {
-        let a = app();
-        // No pods → only actions that don't require a selection apply.
+        // Swap the default dashboard view (which loads pins from
+        // ~/.config/cruster/dashboard.toml and so may have a selection
+        // depending on the developer's machine) for a known-empty pods
+        // view. The contract under test is "selection-requiring actions
+        // are filtered out when nothing is selected", which is view-
+        // agnostic.
+        let mut a = app();
+        a.current_view = Box::new(crate::views::pods::PodsView::new());
         let labels: Vec<&'static str> = a
             .actions
             .applicable(a.current_view.as_ref())
@@ -1287,6 +1393,149 @@ mod tests {
         assert!(labels.contains(&"Quit"));
         // Describe needs a selection; with an empty store, it shouldn't apply.
         assert!(!labels.contains(&"Describe"));
+    }
+
+    #[test]
+    fn safety_badge_uses_env_band_fg_for_context_name() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "my-cluster".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want_bg = a.theme.env_band.unknown.as_ratatui();
+        let want_fg = a.theme.env_band_fg.unknown.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "m" {
+                assert_eq!(cell.style().bg, Some(want_bg), "ctx bg");
+                assert_eq!(cell.style().fg, Some(want_fg), "ctx fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find the 'm' of 'my-cluster' on row 0");
+    }
+
+    #[test]
+    fn safety_badge_mode_chip_uses_mode_rw_color_when_writable() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "ctx".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want = a.theme.mode.rw.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "R" {
+                assert_eq!(cell.style().fg, Some(want), "RW glyph fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find 'R' (from [RW]) on row 0");
+    }
+
+    #[test]
+    fn safety_badge_mode_chip_uses_mode_ro_color_when_read_only() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "ctx".into();
+        // Staging chosen because "STAGING" has no 'R' character, so
+        // the first 'R' we find on the row must come from "[RO]".
+        a.environment = Environment::Staging;
+        a.read_only = true;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want = a.theme.mode.ro.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "R" {
+                assert_eq!(cell.style().fg, Some(want), "RO glyph fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find 'R' (from [RO]) on row 0");
+    }
+
+    #[test]
+    fn safety_badge_drops_layout_first_when_narrow() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "short-ctx".into();
+        a.environment = Environment::Prod;
+        a.read_only = false;
+        // Width chosen so env name fits but layout label does not.
+        // Budget: reserved(13) + ctx(9) + sep+env(3+4) = 29.
+        // Layout would add sep+layout(3+6) = 9 more -> needs width 38+.
+        let backend = TestBackend::new(30, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row0 = String::new();
+        for x in 0..buf.area().width {
+            row0.push_str(buf[(x, 0)].symbol());
+        }
+        assert!(row0.contains("[RW]"), "row should keep mode chip: {row0:?}");
+        assert!(
+            !row0.contains("single"),
+            "row should not contain layout label: {row0:?}"
+        );
+    }
+
+    #[test]
+    fn safety_badge_truncates_context_when_extremely_narrow() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "a-very-long-context-name-that-cannot-fit".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+        let backend = TestBackend::new(20, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row0 = String::new();
+        for x in 0..buf.area().width {
+            row0.push_str(buf[(x, 0)].symbol());
+        }
+        assert!(row0.contains("[RW]"), "mode chip must survive: {row0:?}");
+        assert!(row0.contains('…'), "context should be truncated: {row0:?}");
     }
 
     #[test]
