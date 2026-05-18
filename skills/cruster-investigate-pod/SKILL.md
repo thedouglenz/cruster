@@ -91,6 +91,23 @@ pulled from `managedFields[].time` so you see when a Secret was
 last updated even if k8s never emits an event for it — useful for
 "was it the secret rotation that broke us?" hypotheses.
 
+Recent namespace-wide changes — answers "what shifted in the last 30
+minutes?" without you having to compose `kubectl rollout history`,
+`kubectl get rs`, and managedFields walks yourself:
+
+```bash
+cruster changed -n <namespace> --since 30m
+```
+
+Reports `secret_rotated` / `configmap_changed` (with `consumed_by[]`
+listing every pod that references the rotated object), plus
+`replicaset_rolled`, `image_changed` (before/after image digests
+and revisions), and `resource_created` for new workloads/services in
+the window. NDJSON, most-recent-first, with a terminal `{"summary":
+...}` and the same `kinds_absent` negative-evidence field. This is
+the load-bearing call for "did something change just before things
+broke?"
+
 ## Discovery
 
 Run `cruster help-json` once and cache the result. It now inlines

@@ -67,6 +67,23 @@ pub enum Command {
     Trial,
     /// Merged chronological event stream for a resource (v1: pod refs only).
     Timeline(TimelineArgs),
+    /// What changed in a namespace recently (rotations, rollouts, image
+    /// bumps, workload creations).
+    Changed(ChangedArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct ChangedArgs {
+    /// Namespace to scan. Required (no all-namespaces in v1).
+    #[arg(long, short = 'n')]
+    pub namespace: String,
+    /// Window to scan back. Duration like `30m`, `2h`, `1d`. Default `30m`.
+    #[arg(long, default_value = "30m")]
+    pub since: String,
+    /// Comma-separated list of change kinds to include. Default: all.
+    /// Useful for narrowing: `--kind secret_rotated,image_changed`.
+    #[arg(long)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Parser)]

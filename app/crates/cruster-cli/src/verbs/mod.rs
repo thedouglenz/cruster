@@ -8,6 +8,7 @@ pub mod get;
 pub mod help_json;
 pub mod license;
 pub mod logs;
+pub mod changed;
 pub mod schema;
 pub mod theme;
 pub mod timeline;
@@ -29,5 +30,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::License(args) => license::run(args).await,
         Command::Trial => trial::run().await,
         Command::Timeline(args) => timeline::run(&cli, args).await,
+        Command::Changed(args) => changed::run(&cli, args).await,
     }
 }
