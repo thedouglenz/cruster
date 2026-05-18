@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/why-init-failure/v1.json",
+  "title": "WhyInitFailure",
+  "description": "Diagnosis of an init-container failure. Emits a single JSON object with the detected reason and actionable evidence.",
+  "type": "object",
+  "required": ["pod", "init_container", "init_index", "reason", "evidence", "suggested_fix"],
+  "properties": {
+    "pod": {
+      "type": "string",
+      "description": "Pod reference in ns/name format"
+    },
+    "init_container": {
+      "type": "string",
+      "description": "Name of the failing init container"
+    },
+    "init_index": {
+      "type": "integer",
+      "description": "Index of the failing init container (0-based)"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "init_oom_killed",
+        "auth_failure",
+        "connectivity_failure",
+        "permission_denied",
+        "missing_path",
+        "init_config_missing",
+        "init_image_pull_failure",
+        "init_stuck_pending",
+        "unknown"
+      ],
+      "description": "Detected root cause of the init container failure"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Supporting evidence for the diagnosis",
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "Last exit code of the init container"
+        },
+        "restart_count": {
+          "type": "integer",
+          "description": "Number of init container restarts"
+        },
+        "last_log_line": {
+          "type": "string",
+          "description": "Last log line (or the line that matched a signal)"
+        },
+        "memory_limit": {
+          "type": "string",
+          "description": "Memory limit from pod spec (for OOM diagnosis)"
+        },
+        "image": {
+          "type": "string",
+          "description": "Init container image reference"
+        },
+        "apiserver_error": {
+          "type": "string",
+          "description": "Error message from the apiserver (for config/image issues)"
+        },
+        "stuck_for": {
+          "type": "string",
+          "description": "Duration the init container has been stuck (for pending diagnosis)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "suggested_fix": {
+      "type": "string",
+      "description": "Human-readable suggestion for resolving the issue"
+    }
+  }
+}

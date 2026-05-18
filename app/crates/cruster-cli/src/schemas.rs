@@ -45,6 +45,10 @@ pub const SCHEMAS: &[(&str, &str)] = &[
         include_str!("../schemas/why-crashloop.schema.json"),
     ),
     pair(
+        "why-init-failure",
+        include_str!("../schemas/why-init-failure.schema.json"),
+    ),
+    pair(
         "why-no-endpoints",
         include_str!("../schemas/why-no-endpoints.schema.json"),
     ),
