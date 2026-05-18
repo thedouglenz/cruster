@@ -1209,10 +1209,7 @@ fn build_header_chips(
         .fg(nodes_color)
         .add_modifier(Modifier::BOLD);
 
-    let k8s_version = summary
-        .k8s_version
-        .clone()
-        .unwrap_or_else(|| "?".into());
+    let k8s_version = summary.k8s_version.clone().unwrap_or_else(|| "?".into());
 
     let identity_chips: Vec<(&str, String, Style)> = vec![
         ("CONTEXT ", context_name.to_string(), value_style),
@@ -1222,7 +1219,11 @@ fn build_header_chips(
     ];
     let scale_chips: Vec<(&str, String, Style)> = vec![
         ("PODS ", summary.pods_total.to_string(), value_style),
-        ("DEPLOYS ", summary.deployments_total.to_string(), value_style),
+        (
+            "DEPLOYS ",
+            summary.deployments_total.to_string(),
+            value_style,
+        ),
         ("SVCS ", summary.services.to_string(), value_style),
     ];
 
@@ -1672,7 +1673,9 @@ mod tests {
         assert_eq!(lines.len(), 2);
         let l1 = line_text(&lines[0]);
         let l2 = line_text(&lines[1]);
-        for needle in ["CONTEXT", "my-ctx", "K8S", "v1.31.1", "NODES", "3/3", "NS", "11"] {
+        for needle in [
+            "CONTEXT", "my-ctx", "K8S", "v1.31.1", "NODES", "3/3", "NS", "11",
+        ] {
             assert!(l1.contains(needle), "line 1 missing {needle:?}: {l1:?}");
         }
         for needle in ["PODS", "40", "DEPLOYS", "16", "SVCS", "21"] {
@@ -1722,11 +1725,13 @@ mod tests {
             .unwrap();
         let text = buffer_to_string(terminal.backend().buffer());
         for needle in [
-            "CONTEXT", "my-ctx", "K8S", "v1.31.1",
-            "NODES", "3/3", "NS", "11",
-            "PODS", "40", "DEPLOYS", "16", "SVCS", "21",
+            "CONTEXT", "my-ctx", "K8S", "v1.31.1", "NODES", "3/3", "NS", "11", "PODS", "40",
+            "DEPLOYS", "16", "SVCS", "21",
         ] {
-            assert!(text.contains(needle), "summary missing {needle:?} in:\n{text}");
+            assert!(
+                text.contains(needle),
+                "summary missing {needle:?} in:\n{text}"
+            );
         }
     }
 
