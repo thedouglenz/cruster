@@ -556,9 +556,18 @@ fn draw_trend_card(
         // full-height.
         let observed_max = data.iter().copied().max().unwrap_or(0);
         let max_val = (observed_max + observed_max / 4 + 1).max(5);
+        // `text_value("")` suppresses the default digit BarChart paints
+        // at the base of every bar — with bar_width=1 it just becomes
+        // visual noise (one garbled digit per column), and the
+        // current-value readout in the title row already shows the
+        // latest sample.
         let bars: Vec<ratatui::widgets::Bar> = data
             .iter()
-            .map(|v| ratatui::widgets::Bar::default().value(*v))
+            .map(|v| {
+                ratatui::widgets::Bar::default()
+                    .value(*v)
+                    .text_value(String::new())
+            })
             .collect();
         let chart = ratatui::widgets::BarChart::default()
             .data(ratatui::widgets::BarGroup::default().bars(&bars))
