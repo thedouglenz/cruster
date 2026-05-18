@@ -178,21 +178,45 @@ pub struct LogsArgs {
     #[arg(long, short = 'n')]
     pub namespace: Option<String>,
     /// Container name within the pod. Required if the pod has multiple
-    /// containers.
+    /// containers and `--all-containers` is not set.
     #[arg(long, short = 'c')]
     pub container: Option<String>,
-    /// Stream new log lines as they appear.
+    /// Stream new log lines as they appear. Incompatible with `--grep*`,
+    /// `-A`/`-B`/`-C`, `--previous`, and `--all-containers`.
     #[arg(long, short = 'f')]
     pub follow: bool,
-    /// Maximum lines to return.
+    /// Maximum lines to fetch per source.
     #[arg(long)]
     pub tail: Option<i64>,
     /// Only return lines newer than this duration (e.g. `5m`, `1h`).
     #[arg(long)]
     pub since: Option<String>,
-    /// Only return lines containing this substring (case-sensitive).
+    /// Regex pattern to search for. Repeatable. Format: `[name=]regex`.
+    /// If `name=` is omitted, the regex itself is used as the pattern
+    /// name. Triggers grep mode: NDJSON `{hit: ...}` records per match
+    /// plus a terminal `{summary: ...}` record listing scanned sources
+    /// and any patterns that did not fire.
+    #[arg(long, value_name = "[name=]regex")]
+    pub grep: Vec<String>,
+    /// Literal-substring pattern to search for. Repeatable. Format:
+    /// `[name=]text`. Equivalent to `--grep` with the text escaped.
+    #[arg(long, value_name = "[name=]text")]
+    pub grep_literal: Vec<String>,
+    /// Lines of context after each match (grep -A).
+    #[arg(short = 'A', long = "after-context", default_value_t = 0)]
+    pub after_context: usize,
+    /// Lines of context before each match (grep -B).
+    #[arg(short = 'B', long = "before-context", default_value_t = 0)]
+    pub before_context: usize,
+    /// Lines of context around each match (grep -C; sets both -A and -B).
+    #[arg(long = "context", default_value_t = 0)]
+    pub context: usize,
+    /// Also scan the previous container's logs (the last crash's stream).
     #[arg(long)]
-    pub grep: Option<String>,
+    pub previous: bool,
+    /// Scan every container in the pod, not just the default / `--container`.
+    #[arg(long)]
+    pub all_containers: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -234,7 +258,40 @@ mod tests {
         };
         assert_eq!(args.pod, "nginx");
         assert!(args.follow);
-        assert_eq!(args.grep.as_deref(), Some("error"));
+        assert_eq!(args.grep, vec!["error".to_string()]);
+    }
+
+    #[test]
+    fn parses_logs_with_multiple_named_greps_and_context() {
+        let cli = Cli::try_parse([
+            "cruster",
+            "logs",
+            "nginx",
+            "-n",
+            "default",
+            "--grep",
+            "auth=(?i)\\b(401|403)\\b",
+            "--grep",
+            "panic=panic:|fatal error:",
+            "--grep-literal",
+            "host=connection refused",
+            "-A",
+            "3",
+            "-B",
+            "2",
+            "--previous",
+            "--all-containers",
+        ])
+        .unwrap();
+        let Command::Logs(args) = cli.command else {
+            panic!("expected Logs")
+        };
+        assert_eq!(args.grep.len(), 2);
+        assert_eq!(args.grep_literal.len(), 1);
+        assert_eq!(args.after_context, 3);
+        assert_eq!(args.before_context, 2);
+        assert!(args.previous);
+        assert!(args.all_containers);
     }
 
     #[test]

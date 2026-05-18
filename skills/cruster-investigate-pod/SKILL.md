@@ -40,8 +40,34 @@ If you get an empty result, look for the sentinel line `{"matched":
 Streaming logs (only if you need lines newer than the export window):
 
 ```bash
-cruster logs <name> -n <namespace> --tail 500 --grep <pattern>
+cruster logs <name> -n <namespace> --tail 500
 ```
+
+Multi-pattern log scan with context — the dense-evidence call. Use
+this when you already know which symptoms to look for; one call
+replaces several `kubectl logs | grep` follow-ups:
+
+```bash
+cruster logs <name> -n <namespace> \
+  --grep auth='(?i)\b(401|403|unauthorized|invalid[\s_-]?api[\s_-]?key)\b' \
+  --grep panic='panic:|fatal error:|Traceback' \
+  --grep-literal netfail='connection refused' \
+  -A 3 -B 3 --previous --all-containers
+```
+
+- `--grep` is regex; `--grep-literal` is a substring (auto-escaped).
+  Both repeatable. Both accept `[name=]pattern` so each hit is tagged
+  with the probe that fired.
+- `-A`/`-B`/`--context` give grep-style context lines.
+- `--previous` also scans the previous container's logs (the last
+  crash) — usually where the actual crash output lives.
+- `--all-containers` fans out across every container in the pod.
+
+Output is NDJSON: one `{"hit": ...}` record per match (with `before` /
+`after` context and a negative-from-end `line_offset`), followed by
+one terminal `{"summary": ...}` record. Read the summary first — its
+`patterns_unhit` field lists every probe that came up empty, so you
+don't waste a follow-up call re-checking them.
 
 Pod state in machine form:
 
