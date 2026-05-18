@@ -41,7 +41,11 @@ pub async fn run(cli: &Cli, args: &WhyInitFailureArgs) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             match format {
                 Format::Text => {
-                    writeln!(stdout, "{}: has no init containers; nothing to diagnose", args.pod)?;
+                    writeln!(
+                        stdout,
+                        "{}: has no init containers; nothing to diagnose",
+                        args.pod
+                    )?;
                 }
                 _ => {
                     writeln!(stdout, "{}", serde_json::to_string(&err)?)?;
@@ -57,7 +61,11 @@ pub async fn run(cli: &Cli, args: &WhyInitFailureArgs) -> anyhow::Result<()> {
             let mut stdout = std::io::stdout().lock();
             match format {
                 Format::Text => {
-                    writeln!(stdout, "{}: all init containers succeeded; nothing to diagnose", args.pod)?;
+                    writeln!(
+                        stdout,
+                        "{}: all init containers succeeded; nothing to diagnose",
+                        args.pod
+                    )?;
                 }
                 _ => {
                     writeln!(stdout, "{}", serde_json::to_string(&err)?)?;
@@ -98,7 +106,12 @@ fn find_failing_init_name(pod: &Pod) -> Option<String> {
     init_statuses.first().map(|s| s.name.clone())
 }
 
-async fn fetch_init_logs(api: &Api<Pod>, pod_name: &str, container: &str, tail: i64) -> Vec<String> {
+async fn fetch_init_logs(
+    api: &Api<Pod>,
+    pod_name: &str,
+    container: &str,
+    tail: i64,
+) -> Vec<String> {
     let params = LogParams {
         container: Some(container.to_string()),
         tail_lines: Some(tail),

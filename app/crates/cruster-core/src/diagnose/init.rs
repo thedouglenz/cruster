@@ -63,7 +63,9 @@ impl InitFailureReason {
             InitFailureReason::InitStuckPending => {
                 "Check scheduler events, node resources, and PVC bindings"
             }
-            InitFailureReason::Unknown => "Examine init container logs with `cruster logs --container <init-name>`",
+            InitFailureReason::Unknown => {
+                "Examine init container logs with `cruster logs --container <init-name>`"
+            }
         }
     }
 }
@@ -159,7 +161,10 @@ pub fn diagnose(pod: &Pod, logs: &[String]) -> Result<WhyInitFailure, DiagnoseEr
 
 fn find_failing_init(
     init_statuses: Option<&Vec<k8s_openapi::api::core::v1::ContainerStatus>>,
-) -> (Option<usize>, Option<&k8s_openapi::api::core::v1::ContainerStatus>) {
+) -> (
+    Option<usize>,
+    Option<&k8s_openapi::api::core::v1::ContainerStatus>,
+) {
     let statuses = match init_statuses {
         Some(s) if !s.is_empty() => s,
         _ => return (Some(0), None),
@@ -232,7 +237,10 @@ fn diagnose_init_status(
             return (InitFailureReason::InitImagePullFailure, evidence);
         }
 
-        if reason.is_none() || reason == Some("PodInitializing") || reason == Some("ContainerCreating") {
+        if reason.is_none()
+            || reason == Some("PodInitializing")
+            || reason == Some("ContainerCreating")
+        {
             evidence.stuck_for = Some("waiting to start".to_string());
             return (InitFailureReason::InitStuckPending, evidence);
         }
@@ -254,9 +262,7 @@ fn diagnose_init_status(
     (InitFailureReason::Unknown, evidence)
 }
 
-fn extract_init_memory_limit(
-    container: &k8s_openapi::api::core::v1::Container,
-) -> Option<String> {
+fn extract_init_memory_limit(container: &k8s_openapi::api::core::v1::Container) -> Option<String> {
     let resources = container.resources.as_ref()?;
     let limits = resources.limits.as_ref()?;
     let mem = limits.get("memory")?;

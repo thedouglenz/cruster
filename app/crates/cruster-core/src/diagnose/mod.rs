@@ -17,7 +17,7 @@ pub mod pending;
 
 pub use crashloop::{diagnose, CrashloopReason, Evidence, WhyCrashloop};
 pub use init::{
-    diagnose as diagnose_init, DiagnoseError as InitDiagnoseError, InitEvidence,
-    InitFailureReason, WhyInitFailure,
+    diagnose as diagnose_init, DiagnoseError as InitDiagnoseError, InitEvidence, InitFailureReason,
+    WhyInitFailure,
 };
 pub use log_signals::{detect_signal, detect_signal_in_lines, LogSignal};
