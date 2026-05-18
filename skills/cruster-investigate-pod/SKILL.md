@@ -75,6 +75,22 @@ Pod state in machine form:
 cruster get pods <name> -n <namespace> --format ndjson | jq .
 ```
 
+Merged chronological timeline (events + derived restarts + referenced
+config rotations, in one ordered stream) — use when "what happened,
+in order?" is the question:
+
+```bash
+cruster timeline pod/<name> -n <namespace> --since 1h
+```
+
+Output is NDJSON: one record per fact, then one terminal
+`{"summary": ...}` carrying counts and `kinds_absent` (which probes
+came up empty). `--include restarted,oom_killed` narrows a noisy
+timeline. The `secret_rotated` / `configmap_changed` records are
+pulled from `managedFields[].time` so you see when a Secret was
+last updated even if k8s never emits an event for it — useful for
+"was it the secret rotation that broke us?" hypotheses.
+
 ## Discovery
 
 Run `cruster help-json` once and cache the result. It now inlines

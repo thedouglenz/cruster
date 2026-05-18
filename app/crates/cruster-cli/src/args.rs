@@ -65,6 +65,24 @@ pub enum Command {
     License(LicenseArgs),
     /// Activate a 14-day Pro trial (no credit card, no email required).
     Trial,
+    /// Merged chronological event stream for a resource (v1: pod refs only).
+    Timeline(TimelineArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct TimelineArgs {
+    /// Resource reference: `kind/name`, e.g. `pod/at-foo`. v1 supports
+    /// pod refs only; other kinds error out with a clear message.
+    pub reference: String,
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
+    /// Window to scan back. Duration like `30m`, `2h`, `1d`. Default `1h`.
+    #[arg(long, default_value = "1h")]
+    pub since: String,
+    /// Comma-separated list of record kinds to include. Default: all.
+    /// Useful for narrowing dense timelines (e.g. `--include restarted,oom_killed`).
+    #[arg(long)]
+    pub include: Option<String>,
 }
 
 #[derive(Debug, Parser)]
