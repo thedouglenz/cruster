@@ -13,7 +13,8 @@ use cruster_kube::StoreRegistry;
 use kube::Client;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use ratatui::Terminal;
@@ -983,22 +984,63 @@ impl App {
 
     fn render_safety_badge(&self, frame: &mut Frame<'_>) {
         let area = frame.area();
-        let mode = if self.read_only { "ro" } else { "rw" };
-        let label = format!(
-            " [{}] {} {} · layout:{} ",
-            self.context,
-            self.environment,
-            mode,
-            self.layout.label()
-        );
-        let color = match self.environment {
+        if area.height == 0 || area.width == 0 {
+            return;
+        }
+        let env = self.environment;
+        let bg = match env {
             Environment::Prod => self.theme.env_band.prod.as_ratatui(),
             Environment::Staging => self.theme.env_band.staging.as_ratatui(),
             Environment::Dev => self.theme.env_band.dev.as_ratatui(),
             Environment::Local => self.theme.env_band.local.as_ratatui(),
             Environment::Unknown => self.theme.env_band.unknown.as_ratatui(),
         };
-        let bar = Paragraph::new(label).style(Style::default().bg(color).fg(Color::Black));
+        let env_fg = match env {
+            Environment::Prod => self.theme.env_band_fg.prod.as_ratatui(),
+            Environment::Staging => self.theme.env_band_fg.staging.as_ratatui(),
+            Environment::Dev => self.theme.env_band_fg.dev.as_ratatui(),
+            Environment::Local => self.theme.env_band_fg.local.as_ratatui(),
+            Environment::Unknown => self.theme.env_band_fg.unknown.as_ratatui(),
+        };
+        let muted_fg = self.theme.muted_fg.as_ratatui();
+        let mode_color = if self.read_only {
+            self.theme.mode.ro.as_ratatui()
+        } else {
+            self.theme.mode.rw.as_ratatui()
+        };
+        let mode_text = if self.read_only { "RO" } else { "RW" };
+        let env_text = self.environment.to_string().to_uppercase();
+        let layout_text = self.layout.label().to_string();
+
+        let sep_style = Style::default().bg(bg).fg(muted_fg);
+        let value_style = Style::default()
+            .bg(bg)
+            .fg(env_fg)
+            .add_modifier(Modifier::BOLD);
+        let bracket_style = Style::default().bg(bg).fg(muted_fg);
+        let mode_style = Style::default()
+            .bg(bg)
+            .fg(mode_color)
+            .add_modifier(Modifier::BOLD);
+        let muted_on_bg = Style::default().bg(bg).fg(muted_fg);
+
+        let sep = Span::styled(" │ ", sep_style);
+        let spans = vec![
+            sep.clone(),
+            Span::styled(self.context.clone(), value_style),
+            sep.clone(),
+            Span::styled(env_text, value_style),
+            sep.clone(),
+            Span::styled("[", bracket_style),
+            Span::styled(mode_text.to_string(), mode_style),
+            Span::styled("]", bracket_style),
+            sep.clone(),
+            Span::styled(layout_text, muted_on_bg),
+            sep,
+        ];
+
+        let line = Line::from(spans);
+        let bar = Paragraph::new(line).style(Style::default().bg(bg));
         let rect = Rect {
             x: area.x,
             y: area.y,
@@ -1293,6 +1335,97 @@ mod tests {
         assert!(labels.contains(&"Quit"));
         // Describe needs a selection; with an empty store, it shouldn't apply.
         assert!(!labels.contains(&"Describe"));
+    }
+
+    #[test]
+    fn safety_badge_uses_env_band_fg_for_context_name() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "my-cluster".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want_bg = a.theme.env_band.unknown.as_ratatui();
+        let want_fg = a.theme.env_band_fg.unknown.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "m" {
+                assert_eq!(cell.style().bg, Some(want_bg), "ctx bg");
+                assert_eq!(cell.style().fg, Some(want_fg), "ctx fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find the 'm' of 'my-cluster' on row 0");
+    }
+
+    #[test]
+    fn safety_badge_mode_chip_uses_mode_rw_color_when_writable() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "ctx".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want = a.theme.mode.rw.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "R" {
+                assert_eq!(cell.style().fg, Some(want), "RW glyph fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find 'R' (from [RW]) on row 0");
+    }
+
+    #[test]
+    fn safety_badge_mode_chip_uses_mode_ro_color_when_read_only() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "ctx".into();
+        // Staging chosen because "STAGING" has no 'R' character, so
+        // the first 'R' we find on the row must come from "[RO]".
+        a.environment = Environment::Staging;
+        a.read_only = true;
+
+        let backend = TestBackend::new(80, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let want = a.theme.mode.ro.as_ratatui();
+        let mut found = false;
+        for x in 0..buf.area().width {
+            let cell = &buf[(x, 0)];
+            if cell.symbol() == "R" {
+                assert_eq!(cell.style().fg, Some(want), "RO glyph fg");
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected to find 'R' (from [RO]) on row 0");
     }
 
     #[test]
