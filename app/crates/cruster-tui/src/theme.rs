@@ -31,6 +31,8 @@ pub struct Theme {
     #[serde(default)]
     pub mode: ModeColors,
     #[serde(default)]
+    pub chip: ChipColors,
+    #[serde(default)]
     pub status: StatusColors,
     #[serde(default)]
     pub sparkline: SparklineColors,
@@ -103,6 +105,23 @@ impl Default for ModeColors {
         Self {
             rw: default_mode_rw(),
             ro: default_mode_ro(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChipColors {
+    #[serde(default = "default_chip_label_fg")]
+    pub label_fg: ThemeColor,
+    #[serde(default = "default_chip_value_fg")]
+    pub value_fg: ThemeColor,
+}
+
+impl Default for ChipColors {
+    fn default() -> Self {
+        Self {
+            label_fg: default_chip_label_fg(),
+            value_fg: default_chip_value_fg(),
         }
     }
 }
@@ -264,6 +283,12 @@ fn default_mode_rw() -> ThemeColor {
 fn default_mode_ro() -> ThemeColor {
     ThemeColor::Named("green".into())
 }
+fn default_chip_label_fg() -> ThemeColor {
+    ThemeColor::Named("cyan".into())
+}
+fn default_chip_value_fg() -> ThemeColor {
+    ThemeColor::Named("reset".into())
+}
 fn default_selection_fg() -> ThemeColor {
     ThemeColor::Named("cyan".into())
 }
@@ -382,6 +407,13 @@ mod tests {
             Color::DarkGray
         );
         assert_eq!(ThemeColor::Named("reset".into()).as_ratatui(), Color::Reset);
+    }
+
+    #[test]
+    fn chip_colors_defaults() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.chip.label_fg.as_ratatui(), Color::Cyan);
+        assert_eq!(t.chip.value_fg.as_ratatui(), Color::Reset);
     }
 
     #[test]
