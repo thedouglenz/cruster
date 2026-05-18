@@ -44,6 +44,10 @@ pub const SCHEMAS: &[(&str, &str)] = &[
         "why-crashloop",
         include_str!("../schemas/why-crashloop.schema.json"),
     ),
+    pair(
+        "why-pending",
+        include_str!("../schemas/why-pending.schema.json"),
+    ),
 ];
 
 pub fn lookup(verb: &str) -> Option<&'static str> {
@@ -82,6 +86,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 15);
+        assert_eq!(SCHEMAS.len(), 16);
     }
 }
