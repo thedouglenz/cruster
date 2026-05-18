@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/why-crashloop/v1.json",
+  "title": "WhyCrashloop",
+  "description": "Diagnosis of a CrashLoopBackOff pod. Emits a single JSON object with the detected reason and actionable evidence.",
+  "type": "object",
+  "required": ["pod", "phase", "reason", "evidence", "suggested_fix"],
+  "properties": {
+    "pod": {
+      "type": "string",
+      "description": "Pod reference in ns/name format"
+    },
+    "phase": {
+      "type": "string",
+      "description": "Current pod phase (e.g. Running, Pending)"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "oom_killed",
+        "auth_failure",
+        "connectivity_failure",
+        "permission_denied",
+        "missing_path",
+        "config_missing",
+        "image_pull_failure",
+        "unknown"
+      ],
+      "description": "Detected root cause of the crash loop"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Supporting evidence for the diagnosis",
+      "properties": {
+        "container": {
+          "type": "string",
+          "description": "Name of the crashing container"
+        },
+        "exit_code": {
+          "type": "integer",
+          "description": "Last exit code of the container"
+        },
+        "restart_count": {
+          "type": "integer",
+          "description": "Number of container restarts"
+        },
+        "last_log_line": {
+          "type": "string",
+          "description": "Last log line (or the line that matched a signal)"
+        },
+        "memory_limit": {
+          "type": "string",
+          "description": "Memory limit from pod spec (for OOM diagnosis)"
+        },
+        "image": {
+          "type": "string",
+          "description": "Container image reference"
+        },
+        "apiserver_error": {
+          "type": "string",
+          "description": "Error message from the apiserver (for config/image issues)"
+        }
+      },
+      "additionalProperties": true
+    },
+    "suggested_fix": {
+      "type": "string",
+      "description": "Human-readable suggestion for resolving the issue"
+    }
+  }
+}
