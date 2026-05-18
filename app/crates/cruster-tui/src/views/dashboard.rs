@@ -100,6 +100,9 @@ pub struct DashboardView {
     /// returns so we can switch views without holding a mutable
     /// reference to `App` inside the view.
     pending_switch_id: Option<&'static str>,
+    /// Set when a pin is unpinned via `x`; consumed by `App` to show a
+    /// toast naming the unpinned resource.
+    pending_unpin_toast: Option<String>,
     /// Unused on this view, but views must accept filters without
     /// crashing — keep the field so the trait method has somewhere to
     /// write.
@@ -118,6 +121,7 @@ impl Default for DashboardView {
             pin_snapshots: Vec::new(),
             context_name: current_kubeconfig_context(),
             pending_switch_id: None,
+            pending_unpin_toast: None,
             _filter: Filter::default(),
         }
     }
@@ -254,13 +258,15 @@ impl ResourceView for DashboardView {
                 self.selected = self.config.pins.len().saturating_sub(1);
             }
             KeyCode::Char('x') if !self.config.pins.is_empty() => {
-                self.config.remove(self.selected);
-                let _ = self.config.save();
-                if self.selected >= self.config.pins.len() && self.selected > 0 {
-                    self.selected -= 1;
-                }
-                for sample in self.history.iter_mut() {
-                    sample.pin_values.clear();
+                if let Some(removed) = self.config.remove(self.selected) {
+                    self.pending_unpin_toast = Some(format!("unpinned: {}", removed.label()));
+                    let _ = self.config.save();
+                    if self.selected >= self.config.pins.len() && self.selected > 0 {
+                        self.selected -= 1;
+                    }
+                    for sample in self.history.iter_mut() {
+                        sample.pin_values.clear();
+                    }
                 }
             }
             KeyCode::Enter => {
@@ -283,6 +289,10 @@ impl ResourceView for DashboardView {
 
     fn take_pending_view_switch(&mut self) -> Option<&'static str> {
         self.pending_switch_id.take()
+    }
+
+    fn take_pending_toast(&mut self) -> Option<String> {
+        self.pending_unpin_toast.take()
     }
 }
 
@@ -1781,5 +1791,78 @@ mod tests {
         // The phase-bucket fields were folded into the trends band;
         // the summary now just carries the totals.
         assert_eq!(v.summary.pods_total, 4);
+    }
+
+    #[test]
+    fn unpin_sets_pending_toast() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+        let mut v = DashboardView::new();
+        // Clear any pins loaded from the user's config.
+        v.config.pins.clear();
+        let pin = Pin::from_key(&ResourceKey::namespaced("Pod", "default", "nginx"));
+        v.config.add(pin);
+
+        let key = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        v.handle_key(key);
+
+        let toast = v.take_pending_toast();
+        assert!(toast.is_some(), "expected pending toast after unpin");
+        let msg = toast.unwrap();
+        assert!(
+            msg.contains("unpinned:"),
+            "toast should contain 'unpinned:': {msg:?}"
+        );
+        assert!(
+            msg.contains("pod/default/nginx"),
+            "toast should name the resource: {msg:?}"
+        );
+        assert!(v.config.pins.is_empty(), "pin should be removed");
+    }
+
+    #[test]
+    fn unpin_on_empty_pins_does_nothing() {
+        use crossterm::event::{KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+        let mut v = DashboardView::new();
+        v.config.pins.clear();
+
+        let key = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        v.handle_key(key);
+
+        assert!(v.take_pending_toast().is_none());
+    }
+
+    #[test]
+    fn reload_pins_refreshes_config_and_clamps_selection() {
+        let mut v = DashboardView::new();
+        v.config.add(Pin::from_key(&ResourceKey::namespaced(
+            "Pod", "default", "a",
+        )));
+        v.config.add(Pin::from_key(&ResourceKey::namespaced(
+            "Pod", "default", "b",
+        )));
+        v.selected = 1;
+
+        // Simulate external pin removal (e.g., by another view).
+        v.config.remove(1);
+        let _ = v.config.save();
+
+        // Now reload — selection should clamp.
+        v.reload_pins();
+        assert!(
+            v.selected < v.config.pins.len() || v.config.pins.is_empty(),
+            "selection must be valid after reload"
+        );
     }
 }
