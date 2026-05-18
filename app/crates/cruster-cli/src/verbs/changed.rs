@@ -128,11 +128,7 @@ pub async fn run(cli: &Cli, args: &ChangedArgs) -> anyhow::Result<()> {
     let window = Window::new(now - Duration::seconds(since_secs), now);
     let ns = &args.namespace;
 
-    let include_filter = args
-        .kind
-        .as_deref()
-        .map(parse_include)
-        .transpose()?;
+    let include_filter = args.kind.as_deref().map(parse_include).transpose()?;
 
     let started = std::time::Instant::now();
     let client = Client::try_default().await?;
@@ -271,9 +267,13 @@ pub async fn run(cli: &Cli, args: &ChangedArgs) -> anyhow::Result<()> {
 
     // Filter + sort.
     if let Some(allow) = &include_filter {
-        records.retain(|r| Kind::from_str(r.kind).map(|k| allow.contains(&k)).unwrap_or(false));
+        records.retain(|r| {
+            Kind::from_str(r.kind)
+                .map(|k| allow.contains(&k))
+                .unwrap_or(false)
+        });
     }
-    records.sort_by(|a, b| b.at.cmp(&a.at)); // most-recent-first
+    records.sort_by_key(|r| std::cmp::Reverse(r.at)); // most-recent-first
 
     // Counts + kinds_absent.
     let mut counts: BTreeMap<&'static str, usize> = BTreeMap::new();
@@ -418,11 +418,7 @@ fn creation_record_for(
 /// `deployment.kubernetes.io/revision`, emits `replicaset_rolled` for
 /// every RS created in the window plus an `image_changed` for every
 /// container whose image differs from the prior-revision RS.
-fn rollouts_and_image_changes(
-    all_rsets: &[ReplicaSet],
-    ns: &str,
-    window: &Window,
-) -> Vec<Record> {
+fn rollouts_and_image_changes(all_rsets: &[ReplicaSet], ns: &str, window: &Window) -> Vec<Record> {
     let mut by_owner: BTreeMap<String, Vec<&ReplicaSet>> = BTreeMap::new();
     for rs in all_rsets {
         let Some(owners) = rs.metadata.owner_references.as_ref() else {
@@ -562,13 +558,7 @@ fn emit_record<W: Write>(out: &mut W, format: Format, r: &Record) -> std::io::Re
                 r.ref_["kind"].as_str().unwrap_or("?"),
                 r.ref_["name"].as_str().unwrap_or("?"),
             );
-            writeln!(
-                out,
-                "{}  {}  {}",
-                r.at.to_rfc3339(),
-                r.kind,
-                ref_label,
-            )
+            writeln!(out, "{}  {}  {}", r.at.to_rfc3339(), r.kind, ref_label,)
         }
         _ => {
             let line = serde_json::to_string(r).expect("serialize");
@@ -577,11 +567,7 @@ fn emit_record<W: Write>(out: &mut W, format: Format, r: &Record) -> std::io::Re
     }
 }
 
-fn emit_summary<W: Write>(
-    out: &mut W,
-    format: Format,
-    s: &SummaryEnvelope,
-) -> std::io::Result<()> {
+fn emit_summary<W: Write>(out: &mut W, format: Format, s: &SummaryEnvelope) -> std::io::Result<()> {
     match format {
         Format::Text => {
             let sm = &s.summary;
@@ -654,11 +640,9 @@ fn parse_include(s: &str) -> anyhow::Result<HashSet<Kind>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::apps::v1::{ReplicaSetSpec};
+    use k8s_openapi::api::apps::v1::ReplicaSetSpec;
     use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
-    use k8s_openapi::apimachinery::pkg::apis::meta::v1::{
-        ObjectMeta, OwnerReference, Time,
-    };
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference, Time};
     use std::collections::BTreeMap as Map;
 
     fn rs(
@@ -669,10 +653,7 @@ mod tests {
         images: &[(&str, &str)],
     ) -> ReplicaSet {
         let mut anns = Map::new();
-        anns.insert(
-            "deployment.kubernetes.io/revision".into(),
-            revision.into(),
-        );
+        anns.insert("deployment.kubernetes.io/revision".into(), revision.into());
         ReplicaSet {
             metadata: ObjectMeta {
                 name: Some(name.into()),
@@ -720,7 +701,13 @@ mod tests {
     #[test]
     fn container_images_walks_template() {
         let now = Utc::now();
-        let r = rs("rs1", "deploy", "1", now, &[("a", "img-a:1"), ("b", "img-b:1")]);
+        let r = rs(
+            "rs1",
+            "deploy",
+            "1",
+            now,
+            &[("a", "img-a:1"), ("b", "img-b:1")],
+        );
         let imgs = container_images(&r);
         assert_eq!(imgs.get("a").map(String::as_str), Some("img-a:1"));
         assert_eq!(imgs.get("b").map(String::as_str), Some("img-b:1"));
@@ -752,7 +739,13 @@ mod tests {
         // image_changed (we have nothing to diff against).
         let now = Utc::now();
         let window = Window::new(now - Duration::seconds(3600), now);
-        let only = rs("only", "deploy", "1", now - Duration::seconds(30), &[("c", "img:1")]);
+        let only = rs(
+            "only",
+            "deploy",
+            "1",
+            now - Duration::seconds(30),
+            &[("c", "img:1")],
+        );
 
         let recs = rollouts_and_image_changes(&[only], "ns", &window);
         let kinds: Vec<&str> = recs.iter().map(|r| r.kind).collect();

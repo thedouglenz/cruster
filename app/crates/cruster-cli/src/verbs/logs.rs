@@ -481,7 +481,11 @@ fn write_text_hit<W: Write>(out: &mut W, hit: &Hit) -> std::io::Result<()> {
         "{}/{} [{}] ({}):",
         hit.source.namespace, hit.source.pod, hit.source.container, hit.source.stream
     );
-    writeln!(out, "{header}  pattern={}  offset={}", hit.pattern.id, hit.match_.line_offset)?;
+    writeln!(
+        out,
+        "{header}  pattern={}  offset={}",
+        hit.pattern.id, hit.match_.line_offset
+    )?;
     for c in &hit.before {
         writeln!(out, "   {:>5}  {}", c.line_offset, c.text)?;
     }
@@ -493,7 +497,12 @@ fn write_text_hit<W: Write>(out: &mut W, hit: &Hit) -> std::io::Result<()> {
 }
 
 fn write_text_summary<W: Write>(out: &mut W, s: &Summary) -> std::io::Result<()> {
-    writeln!(out, "scanned {} source(s) in {} ms", s.sources_scanned.len(), s.ms_total)?;
+    writeln!(
+        out,
+        "scanned {} source(s) in {} ms",
+        s.sources_scanned.len(),
+        s.ms_total
+    )?;
     for src in &s.sources_scanned {
         match &src.error {
             None => writeln!(
@@ -518,7 +527,10 @@ fn write_text_summary<W: Write>(out: &mut W, s: &Summary) -> std::io::Result<()>
         writeln!(out, "no hits: {}", s.patterns_unhit.join(", "))?;
     }
     if s.truncated.logs {
-        writeln!(out, "warning: one or more sources hit the --tail limit; more lines may exist")?;
+        writeln!(
+            out,
+            "warning: one or more sources hit the --tail limit; more lines may exist"
+        )?;
     }
     Ok(())
 }
@@ -541,8 +553,7 @@ fn parse_patterns(grep: &[String], grep_literal: &[String]) -> anyhow::Result<Ve
     }
     for raw in grep_literal {
         let (name, expr) = split_named(raw);
-        let regex = Regex::new(&regex::escape(&expr))
-            .expect("escaped literal is a valid regex");
+        let regex = Regex::new(&regex::escape(&expr)).expect("escaped literal is a valid regex");
         out.push(Pattern { name, expr, regex });
     }
     Ok(out)
@@ -678,8 +689,8 @@ mod tests {
         assert_eq!(pats.len(), 2);
         assert!(pats[0].regex.is_match("got HTTP 401 back"));
         assert!(!pats[0].regex.is_match("got HTTP 4010 back")); // \b boundary
-        // literal containing regex metachars (none here, but escaping
-        // matters generally — see next test)
+                                                                // literal containing regex metachars (none here, but escaping
+                                                                // matters generally — see next test)
         assert!(pats[1].regex.is_match("connection refused: dial tcp"));
     }
 
@@ -734,14 +745,14 @@ mod tests {
         let lines: Vec<String> = (0..10)
             .map(|i| format!("2026-05-18T14:00:0{i}Z line-{i}"))
             .collect();
-        let parsed: Vec<(Option<&str>, &str)> =
-            lines.iter().map(|l| split_ts(l)).collect();
+        let parsed: Vec<(Option<&str>, &str)> = lines.iter().map(|l| split_ts(l)).collect();
 
         let hits: Vec<i64> = parsed
             .iter()
             .enumerate()
             .filter_map(|(idx, (_, text))| {
-                text.contains("line-7").then_some((idx as i64) - (parsed.len() as i64))
+                text.contains("line-7")
+                    .then_some((idx as i64) - (parsed.len() as i64))
             })
             .collect();
         assert_eq!(hits, vec![-3]); // 10 lines, idx 7 → -3
@@ -763,17 +774,13 @@ mod tests {
 
     #[test]
     fn patterns_unhit_is_set_when_pattern_fires_zero_times() {
-        let pats = parse_patterns(
-            &["panic=panic:".to_string(), "auth=401".to_string()],
-            &[],
-        )
-        .unwrap();
+        let pats =
+            parse_patterns(&["panic=panic:".to_string(), "auth=401".to_string()], &[]).unwrap();
         let lines = [
             "2026-05-18T14:00:00Z startup".to_string(),
             "2026-05-18T14:00:01Z got HTTP 401 unauthorized".to_string(),
         ];
-        let parsed: Vec<(Option<&str>, &str)> =
-            lines.iter().map(|l| split_ts(l)).collect();
+        let parsed: Vec<(Option<&str>, &str)> = lines.iter().map(|l| split_ts(l)).collect();
         let mut hit_counts: BTreeMap<String, usize> = BTreeMap::new();
         for p in &pats {
             hit_counts.insert(p.name.clone(), 0);

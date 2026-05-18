@@ -1,5 +1,6 @@
 //! CLI verb handlers (one module per verb).
 
+pub mod changed;
 pub mod describe;
 pub mod diff;
 pub mod events;
@@ -8,7 +9,6 @@ pub mod get;
 pub mod help_json;
 pub mod license;
 pub mod logs;
-pub mod changed;
 pub mod schema;
 pub mod theme;
 pub mod timeline;

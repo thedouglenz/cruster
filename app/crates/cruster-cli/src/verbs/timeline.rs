@@ -165,7 +165,9 @@ fn classify_event(e: &Event) -> Kind {
         "Started" => Kind::Started,
         "Killing" => Kind::Killing,
         "Pulled" => Kind::Pulled,
-        "Failed" | "ErrImagePull" | "ImagePullBackOff" if msg.to_ascii_lowercase().contains("pull") || reason != "Failed" => {
+        "Failed" | "ErrImagePull" | "ImagePullBackOff"
+            if msg.to_ascii_lowercase().contains("pull") || reason != "Failed" =>
+        {
             Kind::PullFailed
         }
         "FailedMount" => Kind::MountFailed,
@@ -193,11 +195,7 @@ fn event_severity(kind: Kind, type_: Option<&str>) -> Severity {
 
 // ---------- derived restart records (pure) ----------
 
-fn derive_restart_records(
-    pod_name: &str,
-    ns: &str,
-    statuses: &[ContainerStatus],
-) -> Vec<Record> {
+fn derive_restart_records(pod_name: &str, ns: &str, statuses: &[ContainerStatus]) -> Vec<Record> {
     let mut out = Vec::new();
     for cs in statuses {
         let Some(last) = cs.last_state.as_ref().and_then(|s| s.terminated.as_ref()) else {
@@ -214,8 +212,16 @@ fn derive_restart_records(
         let alive = started_at.map(|s| at.signed_duration_since(s));
 
         let oom = reason == "OOMKilled";
-        let kind = if oom { Kind::OomKilled } else { Kind::Restarted };
-        let severity = if oom { Severity::Error } else { Severity::Warning };
+        let kind = if oom {
+            Kind::OomKilled
+        } else {
+            Kind::Restarted
+        };
+        let severity = if oom {
+            Severity::Error
+        } else {
+            Severity::Warning
+        };
 
         let mut attrs = json!({
             "restart_count": cs.restart_count,
@@ -304,7 +310,9 @@ fn config_record_from_metadata(
     })
 }
 
-fn max_managed_field_time(managed_fields: Option<&[k8s_openapi::apimachinery::pkg::apis::meta::v1::ManagedFieldsEntry]>) -> Option<DateTime<Utc>> {
+fn max_managed_field_time(
+    managed_fields: Option<&[k8s_openapi::apimachinery::pkg::apis::meta::v1::ManagedFieldsEntry]>,
+) -> Option<DateTime<Utc>> {
     managed_fields?
         .iter()
         .filter_map(|m| m.time.as_ref().map(|t| t.0))
@@ -315,8 +323,8 @@ fn max_managed_field_time(managed_fields: Option<&[k8s_openapi::apimachinery::pk
 
 pub async fn run(cli: &Cli, args: &TimelineArgs) -> anyhow::Result<()> {
     let (raw_kind, name) = parse_reference(&args.reference)?;
-    let kind_plural = canonicalise_kind(raw_kind)
-        .ok_or_else(|| anyhow::anyhow!("unknown kind: {raw_kind}"))?;
+    let kind_plural =
+        canonicalise_kind(raw_kind).ok_or_else(|| anyhow::anyhow!("unknown kind: {raw_kind}"))?;
     if kind_plural != "pods" {
         bail!(
             "cruster timeline v1 supports pod refs only (got {}); workload-level aggregation is on the roadmap",
@@ -332,11 +340,7 @@ pub async fn run(cli: &Cli, args: &TimelineArgs) -> anyhow::Result<()> {
     let now = Utc::now();
     let window = Window::new(now - Duration::seconds(since_secs), now);
 
-    let include_filter = args
-        .include
-        .as_deref()
-        .map(parse_include)
-        .transpose()?;
+    let include_filter = args.include.as_deref().map(parse_include).transpose()?;
 
     let started = std::time::Instant::now();
     let client = Client::try_default().await?;
@@ -452,15 +456,9 @@ pub async fn run(cli: &Cli, args: &TimelineArgs) -> anyhow::Result<()> {
                 }
             },
         };
-        if let Some(rec) = config_record_from_metadata(
-            kind.clone(),
-            name,
-            ns,
-            refs,
-            mft,
-            rv.as_deref(),
-            &window,
-        ) {
+        if let Some(rec) =
+            config_record_from_metadata(kind.clone(), name, ns, refs, mft, rv.as_deref(), &window)
+        {
             records.push(rec);
         }
     }
@@ -530,11 +528,7 @@ fn emit_record<W: Write>(out: &mut W, format: Format, r: &Record) -> std::io::Re
     }
 }
 
-fn emit_summary<W: Write>(
-    out: &mut W,
-    format: Format,
-    s: &SummaryEnvelope,
-) -> std::io::Result<()> {
+fn emit_summary<W: Write>(out: &mut W, format: Format, s: &SummaryEnvelope) -> std::io::Result<()> {
     match format {
         Format::Text => {
             let sm = &s.summary;
@@ -651,10 +645,7 @@ mod tests {
         assert_eq!(classify_event(&mk("Started", "")), Kind::Started);
         assert_eq!(classify_event(&mk("Killing", "")), Kind::Killing);
         assert_eq!(classify_event(&mk("Pulled", "")), Kind::Pulled);
-        assert_eq!(
-            classify_event(&mk("ErrImagePull", "")),
-            Kind::PullFailed
-        );
+        assert_eq!(classify_event(&mk("ErrImagePull", "")), Kind::PullFailed);
         assert_eq!(
             classify_event(&mk("ImagePullBackOff", "")),
             Kind::PullFailed
@@ -784,8 +775,7 @@ mod tests {
 
     #[test]
     fn kind_catalog_is_complete_and_unique() {
-        let names: HashSet<&'static str> =
-            Kind::catalog().iter().map(|k| k.as_str()).collect();
+        let names: HashSet<&'static str> = Kind::catalog().iter().map(|k| k.as_str()).collect();
         assert_eq!(names.len(), Kind::catalog().len(), "catalog has duplicates");
         assert!(!names.contains("generic_event"));
     }

@@ -211,14 +211,13 @@ impl ResourceView for DashboardView {
         // Pins band wants as much room as its tile grid needs, but
         // never more than half the screen — trends + summary still
         // matter. Floor at TILE_H+1 so at least one tile-row fits.
-        let pins_h = self
-            .pins_band_height(area.width)
-            .min(area.height / 2)
-            .max(if self.config.pins.is_empty() {
+        let pins_h = self.pins_band_height(area.width).min(area.height / 2).max(
+            if self.config.pins.is_empty() {
                 2
             } else {
                 TILE_H + 1
-            });
+            },
+        );
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -405,8 +404,7 @@ impl DashboardView {
             let w = text.len() as u16;
             if inner.width > w {
                 frame.render_widget(
-                    Paragraph::new(text)
-                        .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+                    Paragraph::new(text).style(Style::default().fg(theme.muted_fg.as_ratatui())),
                     Rect {
                         x: inner.x + inner.width - w,
                         y: inner.y + inner.height.saturating_sub(1),
