@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/why-pending/v1.json",
+  "title": "cruster why-pending (NDJSON record)",
+  "description": "Structural diagnosis of why a Pod is stuck in Pending state. Two record shapes: diagnosis (success) or error (pod not pending).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "diagnosis record",
+      "required": ["pod", "namespace", "reason", "confidence", "description", "evidence", "suggestion"],
+      "properties": {
+        "pod": { "type": "string", "description": "Pod name" },
+        "namespace": { "type": "string", "description": "Pod namespace" },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "unschedulable_no_nodes",
+            "taints",
+            "affinity",
+            "resources",
+            "pvc_unbound",
+            "image_pull_failure",
+            "missing_serviceaccount",
+            "unknown"
+          ],
+          "description": "Detected reason for Pending state"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Confidence level of the diagnosis"
+        },
+        "description": { "type": "string", "description": "Human-readable description of the reason" },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "detail"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": ["event", "pod_condition", "container_status", "pvc_status"],
+                "description": "Where the evidence came from"
+              },
+              "detail": { "type": "string", "description": "Verbatim or summarized evidence text" }
+            }
+          },
+          "description": "Evidence supporting the diagnosis"
+        },
+        "suggestion": { "type": "string", "description": "Actionable suggestion to resolve the issue" }
+      }
+    },
+    {
+      "title": "error record (pod not pending)",
+      "required": ["error", "pod", "namespace"],
+      "properties": {
+        "error": { "type": "string", "description": "Error message explaining why diagnosis failed" },
+        "pod": { "type": "string" },
+        "namespace": { "type": "string" }
+      }
+    }
+  ]
+}

@@ -78,6 +78,9 @@ pub enum Command {
     /// Diagnose why a pod is in CrashLoopBackOff.
     #[command(name = "why-crashloop")]
     WhyCrashloop(WhyCrashloopArgs),
+    /// Diagnose why a Pod is stuck in Pending state.
+    #[command(name = "why-pending")]
+    WhyPending(WhyPendingArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -306,6 +309,14 @@ pub struct WhyCrashloopArgs {
     /// Number of log lines to fetch. Default 50.
     #[arg(long, default_value = "50")]
     pub tail: i64,
+}
+
+#[derive(Debug, Parser)]
+pub struct WhyPendingArgs {
+    /// Pod reference: `pod/<name>` or just `<name>`.
+    pub reference: String,
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
 }
 
 #[cfg(test)]
