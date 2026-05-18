@@ -292,43 +292,16 @@ impl DashboardView {
     /// Counts are slow-moving here; volatile numbers (event rate,
     /// restart rate, rollouts in flight) live in the trends band.
     fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        let s = &self.summary;
-        let version = s.k8s_version.as_deref().unwrap_or("?");
+        // Identity + scale rows: k9s-style chip header (Task 6/7).
+        let header = build_header_chips(&self.summary, &self.context_name, theme, area.width);
+        // CPU / MEM rows: ASCII bar gauges from metrics-server.
+        let (cpu_line, mem_line) = utilisation_lines(&self.metrics, area.width, theme);
 
-        // Line 1: cluster identity — name + version + node + namespace counts.
-        let line1 = Line::from(vec![
-            Span::styled("cluster ", Style::default().fg(theme.muted_fg.as_ratatui())),
-            Span::styled(
-                self.context_name.clone(),
-                Style::default()
-                    .fg(theme.header_fg.as_ratatui())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(
-                    " · {} · {}/{} nodes ready · {} ns",
-                    version, s.nodes_ready, s.nodes_total, s.namespaces,
-                ),
-                Style::default().fg(theme.muted_fg.as_ratatui()),
-            ),
-        ]);
+        let mut lines = header;
+        lines.push(cpu_line);
+        lines.push(mem_line);
 
-        // Line 2: scale — workload object counts. Movable but slow.
-        let line2 = Line::from(vec![Span::styled(
-            format!(
-                "{} pods · {} deployments · {} services",
-                s.pods_total, s.deployments_total, s.services
-            ),
-            Style::default().fg(theme.muted_fg.as_ratatui()),
-        )]);
-
-        // Lines 3-4: cluster CPU / MEM utilisation from metrics-server.
-        // Drawn as ASCII bar gauges so they sit naturally in the
-        // summary band's text flow without fighting the trends-band
-        // chart aesthetic below.
-        let (line3, line4) = utilisation_lines(&self.metrics, area.width, theme);
-
-        let para = Paragraph::new(vec![line1, line2, line3, line4]).block(
+        let para = Paragraph::new(lines).block(
             Block::default()
                 .borders(Borders::TOP)
                 .title(format!(" pulse · {} pins ", self.config.pins.len())),
@@ -1715,6 +1688,31 @@ mod tests {
         let lines = build_header_chips(&make_summary(0, 3), "ctx", &theme, 200);
         let span = line_span_with(&lines[0], "0/3").unwrap();
         assert_eq!(span.style.fg, Some(theme.gauge.danger.as_ratatui()));
+    }
+
+    #[test]
+    fn render_summary_uses_chip_header() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut v = DashboardView::new();
+        v.config = DashboardConfig::default();
+        v.summary = make_summary(3, 3);
+        v.context_name = "my-ctx".into();
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(120, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_summary(f, f.area(), &theme))
+            .unwrap();
+        let text = buffer_to_string(terminal.backend().buffer());
+        for needle in [
+            "CONTEXT", "my-ctx", "K8S", "v1.31.1",
+            "NODES", "3/3", "NS", "11",
+            "PODS", "40", "DEPLOYS", "16", "SVCS", "21",
+        ] {
+            assert!(text.contains(needle), "summary missing {needle:?} in:\n{text}");
+        }
     }
 
     #[test]
