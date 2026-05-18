@@ -3,6 +3,7 @@
 pub mod changed;
 pub mod describe;
 pub mod diff;
+pub mod doctor;
 pub mod events;
 pub mod export;
 pub mod get;
@@ -33,5 +34,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Timeline(args) => timeline::run(&cli, args).await,
         Command::Changed(args) => changed::run(&cli, args).await,
         Command::WhyNoEndpoints(args) => why_no_endpoints::run(&cli, args).await,
+        Command::Doctor(args) => doctor::run(args).await,
     }
 }

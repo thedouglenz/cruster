@@ -73,6 +73,8 @@ pub enum Command {
     /// Diagnose why a service has no live endpoints.
     #[command(name = "why-no-endpoints")]
     WhyNoEndpoints(WhyNoEndpointsArgs),
+    /// Preflight checks: kubeconfig, kubectl, cluster connectivity, permissions.
+    Doctor(DoctorArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -282,6 +284,13 @@ pub struct WhyNoEndpointsArgs {
     /// Namespace of the service. Defaults to current context namespace.
     #[arg(long, short = 'n')]
     pub namespace: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct DoctorArgs {
+    /// Output JSON instead of human-readable text.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[cfg(test)]

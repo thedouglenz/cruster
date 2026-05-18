@@ -5,6 +5,19 @@ description: Investigate why a Kubernetes pod is failing, pending, crashing, or 
 
 # Investigate a failing pod with cruster
 
+## Preflight check
+
+If any cruster command fails to connect, run `cruster doctor` first:
+
+```bash
+cruster doctor --json | jq '.checks[] | select(.status != "ok")'
+```
+
+This validates kubeconfig, kubectl, apiserver reachability, and RBAC
+permissions. Fix any reported issues before proceeding.
+
+## Primary call
+
 Cruster ships a single command that bundles manifest, recent events,
 and a log tail into one markdown report. Reach for this before
 running individual `kubectl describe` / `kubectl logs` calls — it's
