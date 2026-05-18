@@ -106,6 +106,16 @@ cd app && cargo build --release && cp target/release/cruster ~/.local/bin/
 
 ## Quick start
 
+After installing, run `cruster doctor` to validate your kubeconfig
+and cluster connectivity:
+
+```sh
+cruster doctor           # human-readable checks
+cruster doctor --json    # structured JSON for agents/scripts
+```
+
+Exit code: 0 if all checks pass, 1 if warnings, 2 if errors.
+
 TUI:
 ```sh
 cd app && cargo run --release -p cruster-bin

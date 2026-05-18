@@ -11,6 +11,7 @@ cruster-kube = { workspace = true }
 cruster-tui = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+dirs = { workspace = true }
 futures = { workspace = true }
 is-terminal = { workspace = true }
 k8s-openapi = { workspace = true }
@@ -25,3 +26,4 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tempfile = { workspace = true }

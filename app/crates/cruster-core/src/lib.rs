@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod context;
 pub mod diff;
+pub mod doctor;
 pub mod license;
 pub mod tier;
 

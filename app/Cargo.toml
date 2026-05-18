@@ -25,7 +25,7 @@ anyhow = "1"
 thiserror = "2"
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "time", "process"] }
 futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -54,6 +54,9 @@ crossterm = "0.28"
 # Kube
 kube = { version = "0.95", default-features = false, features = ["client", "runtime", "rustls-tls"] }
 k8s-openapi = { version = "0.23", features = ["latest"] }
+
+# Testing
+tempfile = "3"
 
 # Workspace crates
 cruster-core = { path = "crates/cruster-core" }

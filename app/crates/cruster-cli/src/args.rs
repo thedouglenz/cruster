@@ -70,6 +70,8 @@ pub enum Command {
     /// What changed in a namespace recently (rotations, rollouts, image
     /// bumps, workload creations).
     Changed(ChangedArgs),
+    /// Preflight checks: kubeconfig, kubectl, cluster connectivity, permissions.
+    Doctor(DoctorArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -270,6 +272,13 @@ pub struct EventsArgs {
 pub struct SchemaArgs {
     /// Verb to print the schema for, e.g. `get-pod`, `describe`, `logs`.
     pub verb: String,
+}
+
+#[derive(Debug, Parser)]
+pub struct DoctorArgs {
+    /// Output JSON instead of human-readable text.
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[cfg(test)]
