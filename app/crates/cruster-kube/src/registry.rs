@@ -4,9 +4,13 @@
 //! snapshots. The binary populates it at startup by spawning one
 //! watcher per kind.
 
+use std::sync::Arc;
+
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
+use tokio::sync::RwLock;
 
+use crate::metrics::MetricsCache;
 use crate::store::ResourceStore;
 
 #[derive(Clone, Default)]
@@ -19,6 +23,11 @@ pub struct StoreRegistry {
     pub configmaps: ResourceStore<ConfigMap>,
     pub secrets: ResourceStore<Secret>,
     pub namespaces: ResourceStore<Namespace>,
+    /// Latest cluster-wide CPU/MEM utilisation from metrics-server,
+    /// or an "unavailable" marker if the addon isn't installed. The
+    /// `Arc<RwLock<_>>` is shared between the poller task and the
+    /// dashboard render path.
+    pub node_metrics: Arc<RwLock<MetricsCache>>,
 }
 
 impl StoreRegistry {
