@@ -1191,6 +1191,72 @@ fn truncate_label(s: &str, max_chars: u16) -> String {
 }
 
 
+/// Builds the two `Line`s of the dashboard chip header (identity row +
+/// scale row). Pure — takes a snapshot of `Summary` and renders styled
+/// spans against `theme`. `width` is consulted by `fit_chips_into_line`
+/// for trailing-chip truncation (Task 7); the basic helper renders all
+/// chips unconditionally.
+fn build_header_chips(
+    summary: &Summary,
+    context_name: &str,
+    theme: &Theme,
+    _width: u16,
+) -> Vec<Line<'static>> {
+    let label_style = Style::default()
+        .fg(theme.chip.label_fg.as_ratatui())
+        .add_modifier(Modifier::BOLD);
+    let value_style = Style::default()
+        .fg(theme.chip.value_fg.as_ratatui())
+        .add_modifier(Modifier::BOLD);
+    let gap = Span::raw("   ");
+
+    let nodes_text = format!("{}/{} ready", summary.nodes_ready, summary.nodes_total);
+    let nodes_color = if summary.nodes_total == 0 {
+        theme.muted_fg.as_ratatui()
+    } else if summary.nodes_ready == summary.nodes_total {
+        theme.gauge.ok.as_ratatui()
+    } else if summary.nodes_ready == 0 {
+        theme.gauge.danger.as_ratatui()
+    } else {
+        theme.gauge.warn.as_ratatui()
+    };
+    let nodes_value_style = Style::default()
+        .fg(nodes_color)
+        .add_modifier(Modifier::BOLD);
+
+    let k8s_version = summary
+        .k8s_version
+        .clone()
+        .unwrap_or_else(|| "?".into());
+
+    let identity = Line::from(vec![
+        Span::styled("CONTEXT ", label_style),
+        Span::styled(context_name.to_string(), value_style),
+        gap.clone(),
+        Span::styled("K8S ", label_style),
+        Span::styled(k8s_version, value_style),
+        gap.clone(),
+        Span::styled("NODES ", label_style),
+        Span::styled(nodes_text, nodes_value_style),
+        gap.clone(),
+        Span::styled("NS ", label_style),
+        Span::styled(summary.namespaces.to_string(), value_style),
+    ]);
+
+    let scale = Line::from(vec![
+        Span::styled("PODS ", label_style),
+        Span::styled(summary.pods_total.to_string(), value_style),
+        gap.clone(),
+        Span::styled("DEPLOYS ", label_style),
+        Span::styled(summary.deployments_total.to_string(), value_style),
+        gap,
+        Span::styled("SVCS ", label_style),
+        Span::styled(summary.services.to_string(), value_style),
+    ]);
+
+    vec![identity, scale]
+}
+
 fn summarise(
     pods: &[(ResourceKey, Pod)],
     deployments: &[(ResourceKey, Deployment)],
@@ -1552,6 +1618,70 @@ mod tests {
             out.push('\n');
         }
         out
+    }
+
+    fn make_summary(ready: usize, total: usize) -> Summary {
+        Summary {
+            k8s_version: Some("v1.31.1".into()),
+            nodes_total: total,
+            nodes_ready: ready,
+            namespaces: 11,
+            pods_total: 40,
+            deployments_total: 16,
+            services: 21,
+        }
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    fn line_span_with(line: &Line<'_>, needle: &str) -> Option<ratatui::text::Span<'static>> {
+        line.spans
+            .iter()
+            .find(|s| s.content.contains(needle))
+            .map(|s| ratatui::text::Span::styled(s.content.to_string(), s.style))
+    }
+
+    #[test]
+    fn build_header_chips_returns_two_lines_with_all_fields() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "my-ctx", &theme, 200);
+        assert_eq!(lines.len(), 2);
+        let l1 = line_text(&lines[0]);
+        let l2 = line_text(&lines[1]);
+        for needle in ["CONTEXT", "my-ctx", "K8S", "v1.31.1", "NODES", "3/3", "NS", "11"] {
+            assert!(l1.contains(needle), "line 1 missing {needle:?}: {l1:?}");
+        }
+        for needle in ["PODS", "40", "DEPLOYS", "16", "SVCS", "21"] {
+            assert!(l2.contains(needle), "line 2 missing {needle:?}: {l2:?}");
+        }
+    }
+
+    #[test]
+    fn build_header_chips_labels_use_chip_label_fg() {
+        let theme = crate::theme::Theme::terminal_default();
+        let lines = build_header_chips(&make_summary(3, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "CONTEXT").unwrap();
+        assert_eq!(span.style.fg, Some(theme.chip.label_fg.as_ratatui()));
+    }
+
+    #[test]
+    fn build_header_chips_nodes_value_color_zones() {
+        let theme = crate::theme::Theme::terminal_default();
+
+        let lines = build_header_chips(&make_summary(3, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "3/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.ok.as_ratatui()));
+
+        let lines = build_header_chips(&make_summary(1, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "1/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.warn.as_ratatui()));
+
+        let lines = build_header_chips(&make_summary(0, 3), "ctx", &theme, 200);
+        let span = line_span_with(&lines[0], "0/3").unwrap();
+        assert_eq!(span.style.fg, Some(theme.gauge.danger.as_ratatui()));
     }
 
     #[test]
