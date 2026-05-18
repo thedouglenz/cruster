@@ -73,6 +73,11 @@ pub enum Command {
     /// Diagnose why a service has no live endpoints.
     #[command(name = "why-no-endpoints")]
     WhyNoEndpoints(WhyNoEndpointsArgs),
+    /// Preflight checks: kubeconfig, kubectl, cluster connectivity, permissions.
+    Doctor(DoctorArgs),
+    /// Diagnose why a pod is in CrashLoopBackOff.
+    #[command(name = "why-crashloop")]
+    WhyCrashloop(WhyCrashloopArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -282,6 +287,25 @@ pub struct WhyNoEndpointsArgs {
     /// Namespace of the service. Defaults to current context namespace.
     #[arg(long, short = 'n')]
     pub namespace: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct DoctorArgs {
+    /// Output JSON instead of human-readable text.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Debug, Parser)]
+pub struct WhyCrashloopArgs {
+    /// Pod name (without kind prefix; this verb is pod-specific).
+    pub pod: String,
+    /// Namespace. Defaults to the default namespace.
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
+    /// Number of log lines to fetch. Default 50.
+    #[arg(long, default_value = "50")]
+    pub tail: i64,
 }
 
 #[cfg(test)]

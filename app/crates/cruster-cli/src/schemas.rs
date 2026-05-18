@@ -41,6 +41,10 @@ pub const SCHEMAS: &[(&str, &str)] = &[
     pair("timeline", include_str!("../schemas/timeline.schema.json")),
     pair("changed", include_str!("../schemas/changed.schema.json")),
     pair(
+        "why-crashloop",
+        include_str!("../schemas/why-crashloop.schema.json"),
+    ),
+    pair(
         "why-no-endpoints",
         include_str!("../schemas/why-no-endpoints.schema.json"),
     ),
@@ -82,6 +86,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 15);
+        assert_eq!(SCHEMAS.len(), 16);
     }
 }
