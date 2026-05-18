@@ -21,7 +21,7 @@ use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph, Sparkline};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::app::LoopState;
@@ -57,9 +57,16 @@ struct Summary {
 
 #[derive(Debug, Default, Clone)]
 struct Sample {
-    pods_running: u64,
-    pods_failed: u64,
-    events_recent: u64,
+    /// Events whose `last_timestamp` is within the last 60s. Reads
+    /// as a rough events-per-minute rate sampled once per second.
+    events_per_min: u64,
+    /// Cumulative container restart count across all pods at the
+    /// time of the sample. Per-sample delta is what the chart
+    /// actually plots (see `restart_deltas`).
+    restarts_total: u64,
+    /// Number of deployments where `ready_replicas < spec.replicas`
+    /// — i.e. mid-rollout or stuck.
+    rollouts_active: u64,
     /// One scalar per pin, parallel to `config.pins`. Pin index that
     /// doesn't fit the slot (e.g. the pin list grew) is missing.
     pin_values: Vec<u64>,
@@ -195,9 +202,9 @@ impl ResourceView for DashboardView {
                 .map(|(pin, snap)| pin_scalar(pin, snap, &pods))
                 .collect();
             self.push_sample(Sample {
-                pods_running: self.summary.pods_running as u64,
-                pods_failed: self.summary.pods_failed as u64,
-                events_recent: self.summary.events_recent as u64,
+                events_per_min: events_in_last_60s(&events),
+                restarts_total: total_container_restarts(&pods),
+                rollouts_active: deployments_rolling_out(&deployments),
                 pin_values,
             });
         }
@@ -223,8 +230,8 @@ impl ResourceView for DashboardView {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(4), // summary band (top border + 2 lines + 1 padding)
-                Constraint::Min(5),    // trends band fills remainder
-                Constraint::Length(pins_h),
+                Constraint::Length(9), // trends band: top border + title + 6 chart rows + axis
+                Constraint::Min(pins_h),
             ])
             .split(area);
 
@@ -315,46 +322,68 @@ impl DashboardView {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        if inner.height < 2 {
+        if inner.height < 3 || inner.width < 30 {
             return;
         }
 
-        let pods_running: Vec<u64> = self.history.iter().map(|s| s.pods_running).collect();
-        let pods_failed: Vec<u64> = self.history.iter().map(|s| s.pods_failed).collect();
-        let events_recent: Vec<u64> = self.history.iter().map(|s| s.events_recent).collect();
+        // Three signals laid out horizontally as mini-cards. Each
+        // card: title + big current value + multi-row BarChart of
+        // recent samples + axis label.
+        let events: Vec<u64> = self.history.iter().map(|s| s.events_per_min).collect();
+        let restarts = restart_deltas(&self.history);
+        let rollouts: Vec<u64> = self.history.iter().map(|s| s.rollouts_active).collect();
 
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
+        // 3 cards + 2 single-column gutters between them.
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
             .constraints([
+                Constraint::Ratio(1, 3),
                 Constraint::Length(1),
+                Constraint::Ratio(1, 3),
                 Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Min(0),
+                Constraint::Ratio(1, 3),
             ])
             .split(inner);
 
-        draw_trend_row(
+        // Vertical separator glyphs in the gutters.
+        for &gutter_idx in &[1usize, 3] {
+            let g = cols[gutter_idx];
+            for y in g.y..(g.y + g.height) {
+                frame.render_widget(
+                    Paragraph::new("│")
+                        .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+                    Rect {
+                        x: g.x,
+                        y,
+                        width: 1,
+                        height: 1,
+                    },
+                );
+            }
+        }
+
+        draw_trend_card(
             frame,
-            rows[0],
-            "pods running",
-            &pods_running,
-            theme.sparkline.primary.as_ratatui(),
+            cols[0],
+            "events/min",
+            &events,
+            theme.sparkline.warn.as_ratatui(),
             theme,
         );
-        draw_trend_row(
+        draw_trend_card(
             frame,
-            rows[1],
-            "pods failed ",
-            &pods_failed,
+            cols[2],
+            "restarts/min",
+            &restarts,
             theme.sparkline.danger.as_ratatui(),
             theme,
         );
-        draw_trend_row(
+        draw_trend_card(
             frame,
-            rows[2],
-            "events      ",
-            &events_recent,
-            theme.sparkline.warn.as_ratatui(),
+            cols[4],
+            "rollouts",
+            &rollouts,
+            theme.sparkline.primary.as_ratatui(),
             theme,
         );
     }
@@ -452,7 +481,11 @@ impl DashboardView {
     }
 }
 
-fn draw_trend_row(
+/// One trend mini-card. Layout (top-to-bottom):
+///   row 0: title (left, muted) + current value (right, bold/colored)
+///   rows 1..(h-2): vertical BarChart of `data` (one bar per sample)
+///   row h-1: `60s ago  ─────────  now` axis label, muted
+fn draw_trend_card(
     frame: &mut Frame<'_>,
     area: Rect,
     label: &str,
@@ -460,44 +493,113 @@ fn draw_trend_row(
     color: Color,
     theme: &Theme,
 ) {
-    if area.width < (label.len() as u16) + 8 {
+    if area.height < 3 || area.width < 14 {
         return;
     }
+
+    // Title row.
     let last = data.last().copied().unwrap_or(0);
-    let label_rect = Rect {
-        x: area.x,
-        y: area.y,
-        width: label.len() as u16,
-        height: 1,
-    };
-    let spark_w = area
-        .width
-        .saturating_sub(label_rect.width)
-        .saturating_sub(6);
-    let spark_rect = Rect {
-        x: label_rect.x + label_rect.width + 1,
-        y: area.y,
-        width: spark_w,
-        height: 1,
-    };
-    let val_rect = Rect {
-        x: spark_rect.x + spark_rect.width + 1,
-        y: area.y,
-        width: 4,
-        height: 1,
-    };
+    let value_text = format!("{last}");
+    let value_w = value_text.len() as u16;
     frame.render_widget(
-        Paragraph::new(label.to_string()).style(Style::default().fg(theme.muted_fg.as_ratatui())),
-        label_rect,
+        Paragraph::new(label.to_string())
+            .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+        Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width.saturating_sub(value_w + 1),
+            height: 1,
+        },
     );
-    let spark = Sparkline::default()
-        .data(data)
-        .style(Style::default().fg(color));
-    frame.render_widget(spark, spark_rect);
     frame.render_widget(
-        Paragraph::new(format!("{last:>4}")).style(Style::default().fg(color)),
-        val_rect,
+        Paragraph::new(value_text)
+            .alignment(ratatui::layout::Alignment::Right)
+            .style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Rect {
+            x: area.x + area.width - value_w,
+            y: area.y,
+            width: value_w,
+            height: 1,
+        },
     );
+
+    // Chart area: everything between title and axis label.
+    let chart_h = area.height.saturating_sub(2);
+    if chart_h > 0 && data.len() >= 2 {
+        // BarChart with `bar_width=1` and `bar_gap=0` packs samples
+        // tight; multi-row height gives visible height variation so
+        // it doesn't read as a single progress bar.
+        //
+        // Use a chart-local max that gives the tallest bar a bit of
+        // headroom — otherwise a single non-zero sample maxes the
+        // chart and every other bar is invisibly short. A floor of
+        // 5 keeps very-quiet clusters from showing every blip as
+        // full-height.
+        let observed_max = data.iter().copied().max().unwrap_or(0);
+        let max_val = (observed_max + observed_max / 4 + 1).max(5);
+        let bars: Vec<ratatui::widgets::Bar> = data
+            .iter()
+            .map(|v| ratatui::widgets::Bar::default().value(*v))
+            .collect();
+        let chart = ratatui::widgets::BarChart::default()
+            .data(ratatui::widgets::BarGroup::default().bars(&bars))
+            .bar_width(1)
+            .bar_gap(0)
+            .max(max_val)
+            .bar_style(Style::default().fg(color));
+        frame.render_widget(
+            chart,
+            Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: chart_h,
+            },
+        );
+    }
+
+    // Axis row.
+    let axis_y = area.y + area.height - 1;
+    let axis_text = format_axis_label(area.width);
+    frame.render_widget(
+        Paragraph::new(axis_text).style(Style::default().fg(theme.muted_fg.as_ratatui())),
+        Rect {
+            x: area.x,
+            y: axis_y,
+            width: area.width,
+            height: 1,
+        },
+    );
+}
+
+/// `60s ago ───── now` stretched to fit `width`.
+fn format_axis_label(width: u16) -> String {
+    let left = "60s ago";
+    let right = "now";
+    if (width as usize) < left.len() + right.len() + 2 {
+        return "─".repeat(width as usize);
+    }
+    let dashes = (width as usize) - left.len() - right.len() - 2;
+    format!("{left} {} {right}", "─".repeat(dashes))
+}
+
+/// Per-sample delta of `restarts_total`, normalised to roughly
+/// restarts-per-minute. Sampling interval is 1s so the raw delta is
+/// per-second; multiply by 60. Negative deltas (pod restart counter
+/// resets after pod recreation) clamp to 0 so the chart doesn't
+/// dip below the baseline.
+fn restart_deltas(history: &VecDeque<Sample>) -> Vec<u64> {
+    let mut out = Vec::with_capacity(history.len());
+    let mut prev: Option<u64> = None;
+    for s in history {
+        let delta = match prev {
+            Some(p) if s.restarts_total >= p => (s.restarts_total - p) * 60,
+            _ => 0,
+        };
+        out.push(delta);
+        prev = Some(s.restarts_total);
+    }
+    out
 }
 
 /// Per-tile visual shape. Numeric kinds (Deployment) get a car-
@@ -1072,6 +1174,50 @@ fn node_is_ready(node: &Node) -> bool {
         .unwrap_or(false)
 }
 
+fn events_in_last_60s(events: &[(ResourceKey, k8s_openapi::api::core::v1::Event)]) -> u64 {
+    let cutoff = chrono::Utc::now() - chrono::Duration::seconds(60);
+    events
+        .iter()
+        .filter(|(_, e)| {
+            e.last_timestamp
+                .as_ref()
+                .map(|t| t.0 >= cutoff)
+                .unwrap_or(false)
+        })
+        .count() as u64
+}
+
+fn total_container_restarts(pods: &[(ResourceKey, Pod)]) -> u64 {
+    let mut total: i64 = 0;
+    for (_, p) in pods {
+        if let Some(cs) = p
+            .status
+            .as_ref()
+            .and_then(|s| s.container_statuses.as_ref())
+        {
+            for c in cs {
+                total += c.restart_count as i64;
+            }
+        }
+    }
+    total.max(0) as u64
+}
+
+fn deployments_rolling_out(deployments: &[(ResourceKey, Deployment)]) -> u64 {
+    deployments
+        .iter()
+        .filter(|(_, d)| {
+            let desired = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
+            let ready = d
+                .status
+                .as_ref()
+                .and_then(|s| s.ready_replicas)
+                .unwrap_or(0);
+            desired > 0 && ready < desired
+        })
+        .count() as u64
+}
+
 fn view_id_for_kind(kind: &str) -> Option<&'static str> {
     match kind {
         "Pod" => Some("pods"),
@@ -1137,9 +1283,9 @@ mod tests {
 
         let mut v = DashboardView::new();
         v.history.push_back(Sample {
-            pods_running: 3,
-            pods_failed: 0,
-            events_recent: 1,
+            events_per_min: 1,
+            restarts_total: 0,
+            rollouts_active: 0,
             pin_values: vec![],
         });
 
@@ -1158,12 +1304,12 @@ mod tests {
             for x in 0..buf.area().width {
                 line.push_str(buf[(x, y)].symbol());
             }
-            if line.contains("pods running") {
+            if line.contains("events / min") {
                 row_text = line;
-                // The label cells should carry the muted_fg color.
+                // The label's first 'e' should carry the muted_fg color.
                 for x in 0..buf.area().width {
                     let cell = &buf[(x, y)];
-                    if cell.symbol() == "p" {
+                    if cell.symbol() == "e" {
                         row_fg = cell.style().fg;
                         break;
                     }
@@ -1173,7 +1319,7 @@ mod tests {
         }
         assert!(
             !row_text.is_empty(),
-            "expected to find a 'pods running' trend row"
+            "expected to find a 'events / min' trend label"
         );
         assert_eq!(
             row_fg,
