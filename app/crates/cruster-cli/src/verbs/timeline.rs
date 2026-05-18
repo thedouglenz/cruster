@@ -16,14 +16,12 @@
 //! v1 scope: pod refs only. Workload-level aggregation (deployment /
 //! statefulset / daemonset → owned pods) is intentionally deferred.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 
 use anyhow::{bail, Context as _};
 use chrono::{DateTime, Duration, Utc};
-use k8s_openapi::api::core::v1::{
-    ConfigMap, Container, ContainerStatus, Event, Pod, PodSpec, Secret, Volume,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, ContainerStatus, Event, Pod, Secret};
 use kube::api::ListParams;
 use kube::{Api, Client};
 use serde::Serialize;
@@ -32,6 +30,7 @@ use serde_json::{json, Value};
 use crate::args::{Cli, Format, TimelineArgs};
 use crate::envelope::Window;
 use crate::output::{effective_format, stdout_is_tty};
+use crate::refs::{collect_config_refs, ConfigKind, ConfigRef};
 use crate::verbs::describe::parse_reference;
 use crate::verbs::get::canonicalise_kind;
 
@@ -154,130 +153,6 @@ struct TruncationFlags {
 #[derive(Debug, Serialize)]
 struct SummaryEnvelope {
     summary: Summary,
-}
-
-// ---------- config reference extraction (pure) ----------
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum ConfigKind {
-    Secret,
-    ConfigMap,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ConfigRef {
-    kind: ConfigKind,
-    name: String,
-    /// How the pod references this object: `env`, `envFrom`, `volume`,
-    /// `projected`. Used to populate the record's `target.via`.
-    via: &'static str,
-    /// Container name where the reference appears, if applicable.
-    /// `None` for volume references (volumes are pod-scoped).
-    container: Option<String>,
-}
-
-fn collect_config_refs(spec: &PodSpec) -> Vec<ConfigRef> {
-    let mut out: BTreeSet<ConfigRef> = BTreeSet::new();
-    for c in &spec.containers {
-        collect_from_container(c, &mut out);
-    }
-    if let Some(inits) = &spec.init_containers {
-        for c in inits {
-            collect_from_container(c, &mut out);
-        }
-    }
-    for v in spec.volumes.as_deref().unwrap_or(&[]) {
-        collect_from_volume(v, &mut out);
-    }
-    out.into_iter().collect()
-}
-
-fn collect_from_container(c: &Container, out: &mut BTreeSet<ConfigRef>) {
-    if let Some(envs) = &c.env {
-        for e in envs {
-            if let Some(vf) = &e.value_from {
-                if let Some(sref) = &vf.secret_key_ref {
-                    out.insert(ConfigRef {
-                        kind: ConfigKind::Secret,
-                        name: sref.name.clone(),
-                        via: "env",
-                        container: Some(c.name.clone()),
-                    });
-                }
-                if let Some(cref) = &vf.config_map_key_ref {
-                    out.insert(ConfigRef {
-                        kind: ConfigKind::ConfigMap,
-                        name: cref.name.clone(),
-                        via: "env",
-                        container: Some(c.name.clone()),
-                    });
-                }
-            }
-        }
-    }
-    if let Some(efs) = &c.env_from {
-        for e in efs {
-            if let Some(sref) = &e.secret_ref {
-                out.insert(ConfigRef {
-                    kind: ConfigKind::Secret,
-                    name: sref.name.clone(),
-                    via: "envFrom",
-                    container: Some(c.name.clone()),
-                });
-            }
-            if let Some(cref) = &e.config_map_ref {
-                out.insert(ConfigRef {
-                    kind: ConfigKind::ConfigMap,
-                    name: cref.name.clone(),
-                    via: "envFrom",
-                    container: Some(c.name.clone()),
-                });
-            }
-        }
-    }
-}
-
-fn collect_from_volume(v: &Volume, out: &mut BTreeSet<ConfigRef>) {
-    if let Some(s) = &v.secret {
-        if let Some(name) = &s.secret_name {
-            out.insert(ConfigRef {
-                kind: ConfigKind::Secret,
-                name: name.clone(),
-                via: "volume",
-                container: None,
-            });
-        }
-    }
-    if let Some(cm) = &v.config_map {
-        out.insert(ConfigRef {
-            kind: ConfigKind::ConfigMap,
-            name: cm.name.clone(),
-            via: "volume",
-            container: None,
-        });
-    }
-    if let Some(proj) = &v.projected {
-        if let Some(sources) = &proj.sources {
-            for src in sources {
-                if let Some(s) = &src.secret {
-                    out.insert(ConfigRef {
-                        kind: ConfigKind::Secret,
-                        name: s.name.clone(),
-                        via: "projected",
-                        container: None,
-                    });
-                }
-                if let Some(cm) = &src.config_map {
-                    out.insert(ConfigRef {
-                        kind: ConfigKind::ConfigMap,
-                        name: cm.name.clone(),
-                        via: "projected",
-                        container: None,
-                    });
-                }
-            }
-        }
-    }
 }
 
 // ---------- event classification (pure) ----------
@@ -764,97 +639,6 @@ fn short_err(e: &kube::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::{
-        ConfigMapKeySelector, ConfigMapVolumeSource, EnvFromSource, EnvVar, EnvVarSource,
-        SecretKeySelector, SecretVolumeSource,
-    };
-
-    fn pod_with_refs() -> Pod {
-        let c = Container {
-            name: "app".into(),
-            env: Some(vec![
-                EnvVar {
-                    name: "TOKEN".into(),
-                    value_from: Some(EnvVarSource {
-                        secret_key_ref: Some(SecretKeySelector {
-                            name: "api-creds".into(),
-                            key: "token".into(),
-                            optional: None,
-                        }),
-                        ..Default::default()
-                    }),
-                    value: None,
-                },
-                EnvVar {
-                    name: "FEATURE_FLAG".into(),
-                    value_from: Some(EnvVarSource {
-                        config_map_key_ref: Some(ConfigMapKeySelector {
-                            name: "features".into(),
-                            key: "enabled".into(),
-                            optional: None,
-                        }),
-                        ..Default::default()
-                    }),
-                    value: None,
-                },
-            ]),
-            env_from: Some(vec![EnvFromSource {
-                prefix: None,
-                secret_ref: Some(k8s_openapi::api::core::v1::SecretEnvSource {
-                    name: "bulk-secret".into(),
-                    optional: None,
-                }),
-                config_map_ref: None,
-            }]),
-            ..Default::default()
-        };
-        let spec = PodSpec {
-            containers: vec![c],
-            volumes: Some(vec![Volume {
-                name: "cfg".into(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: "file-cfg".into(),
-                    ..Default::default()
-                }),
-                secret: Some(SecretVolumeSource {
-                    secret_name: Some("file-sec".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        };
-        Pod {
-            metadata: Default::default(),
-            spec: Some(spec),
-            status: None,
-        }
-    }
-
-    #[test]
-    fn collect_config_refs_walks_env_envfrom_and_volumes() {
-        let pod = pod_with_refs();
-        let refs = collect_config_refs(pod.spec.as_ref().unwrap());
-        let names: Vec<(&str, &str)> = refs
-            .iter()
-            .map(|r| {
-                (
-                    match r.kind {
-                        ConfigKind::Secret => "Secret",
-                        ConfigKind::ConfigMap => "ConfigMap",
-                    },
-                    r.name.as_str(),
-                )
-            })
-            .collect();
-        assert!(names.contains(&("Secret", "api-creds")));
-        assert!(names.contains(&("ConfigMap", "features")));
-        assert!(names.contains(&("Secret", "bulk-secret")));
-        assert!(names.contains(&("ConfigMap", "file-cfg")));
-        assert!(names.contains(&("Secret", "file-sec")));
-        // 5 distinct refs, no duplicates.
-        assert_eq!(refs.len(), 5);
-    }
 
     #[test]
     fn classify_event_maps_known_reasons() {
