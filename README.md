@@ -3,6 +3,8 @@
 A Kubernetes TUI for people who live in k9s all day. Built in Rust.
 Optimized for speed, ergonomics, and Claude Code compatibility.
 
+![Cruster pulse dashboard](docs/pulse-dashboard.png)
+
 This repository is a monorepo:
 
 - `app/` — the Rust TUI + CLI (cargo workspace, `cd app && cargo build`)
