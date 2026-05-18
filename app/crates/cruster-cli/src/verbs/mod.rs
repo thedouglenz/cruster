@@ -14,6 +14,7 @@ pub mod schema;
 pub mod theme;
 pub mod timeline;
 pub mod trial;
+pub mod why_crashloop;
 
 use crate::args::{Cli, Command};
 
@@ -33,5 +34,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::Timeline(args) => timeline::run(&cli, args).await,
         Command::Changed(args) => changed::run(&cli, args).await,
         Command::Doctor(args) => doctor::run(args).await,
+        Command::WhyCrashloop(args) => why_crashloop::run(&cli, args).await,
     }
 }
