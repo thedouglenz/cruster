@@ -149,7 +149,6 @@ impl DashboardView {
         }
         self.history.push_back(sample);
     }
-
 }
 
 /// How many tile columns fit in `width` accounting for gutters.
@@ -342,8 +341,7 @@ impl DashboardView {
             let g = cols[gutter_idx];
             for y in g.y..(g.y + g.height) {
                 frame.render_widget(
-                    Paragraph::new("│")
-                        .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+                    Paragraph::new("│").style(Style::default().fg(theme.muted_fg.as_ratatui())),
                     Rect {
                         x: g.x,
                         y,
@@ -426,8 +424,7 @@ impl DashboardView {
             let w = text.len() as u16;
             if inner.width > w {
                 frame.render_widget(
-                    Paragraph::new(text)
-                        .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+                    Paragraph::new(text).style(Style::default().fg(theme.muted_fg.as_ratatui())),
                     Rect {
                         x: inner.x + inner.width - w,
                         y: inner.y + inner.height.saturating_sub(1),
@@ -494,8 +491,7 @@ fn draw_trend_card(
     let value_text = format!("{last}");
     let value_w = value_text.len() as u16;
     frame.render_widget(
-        Paragraph::new(label.to_string())
-            .style(Style::default().fg(theme.muted_fg.as_ratatui())),
+        Paragraph::new(label.to_string()).style(Style::default().fg(theme.muted_fg.as_ratatui())),
         Rect {
             x: area.x,
             y: area.y,
@@ -1088,9 +1084,7 @@ fn build_utilisation_line<'a>(
         ),
         Span::styled(
             format!("{:>3}%  ", pct_u),
-            Style::default()
-                .fg(zone_color)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(zone_color).add_modifier(Modifier::BOLD),
         ),
         Span::styled(bar, Style::default().fg(zone_color)),
         Span::styled(
@@ -1171,7 +1165,6 @@ fn truncate_label(s: &str, max_chars: u16) -> String {
     out.push('…');
     out
 }
-
 
 /// Builds the two `Line`s of the dashboard chip header (identity row +
 /// scale row). Pure — takes a snapshot of `Summary` and renders styled
@@ -1621,7 +1614,10 @@ mod tests {
             "expected fallback message in:\n{text}"
         );
         // No percent value should be rendered when unavailable.
-        assert!(!text.contains('%'), "did not expect a % readout in:\n{text}");
+        assert!(
+            !text.contains('%'),
+            "did not expect a % readout in:\n{text}"
+        );
     }
 
     fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {

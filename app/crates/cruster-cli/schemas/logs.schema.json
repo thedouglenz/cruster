@@ -2,11 +2,106 @@
   "$schema": "https://json-schema.org/draft-07/schema",
   "$id": "https://cruster.dev/schemas/logs/v1.json",
   "title": "cruster logs (NDJSON record)",
+  "description": "Two record shapes depending on mode. Stream mode (no --grep / --grep-literal) emits one `line` record per log line. Grep mode emits one `hit` record per match, then one terminal `summary` record listing every source scanned plus any patterns that produced zero hits.",
   "type": "object",
-  "required": ["pod", "line"],
-  "properties": {
-    "pod": { "type": "string" },
-    "container": { "type": ["string", "null"] },
-    "line": { "type": "string" }
+  "oneOf": [
+    {
+      "title": "stream-mode line record",
+      "required": ["pod", "line"],
+      "properties": {
+        "pod": { "type": "string" },
+        "container": { "type": ["string", "null"] },
+        "line": { "type": "string" }
+      }
+    },
+    {
+      "title": "grep-mode hit record",
+      "required": ["hit"],
+      "properties": {
+        "hit": {
+          "type": "object",
+          "required": ["source", "pattern", "match"],
+          "properties": {
+            "source": {
+              "type": "object",
+              "required": ["pod", "namespace", "container", "stream"],
+              "properties": {
+                "pod":       { "type": "string" },
+                "namespace": { "type": "string" },
+                "container": { "type": "string" },
+                "stream":    { "type": "string", "enum": ["current", "previous"] }
+              }
+            },
+            "pattern": {
+              "type": "object",
+              "required": ["id", "expr"],
+              "properties": {
+                "id":   { "type": "string" },
+                "expr": { "type": "string" }
+              }
+            },
+            "match":  { "$ref": "#/definitions/contextLine" },
+            "before": { "type": "array", "items": { "$ref": "#/definitions/contextLine" } },
+            "after":  { "type": "array", "items": { "$ref": "#/definitions/contextLine" } }
+          }
+        }
+      }
+    },
+    {
+      "title": "grep-mode summary record (one per call, always last)",
+      "required": ["summary"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": ["sources_scanned", "patterns_hit", "patterns_unhit", "truncated", "ms_total"],
+          "properties": {
+            "sources_scanned": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pod", "namespace", "container", "stream", "lines"],
+                "properties": {
+                  "pod":       { "type": "string" },
+                  "namespace": { "type": "string" },
+                  "container": { "type": "string" },
+                  "stream":    { "type": "string", "enum": ["current", "previous"] },
+                  "lines":     { "type": "integer", "minimum": 0 },
+                  "error":     { "type": "string", "description": "Present iff the source could not be fetched (e.g. no previous logs because container never crashed)." }
+                }
+              }
+            },
+            "patterns_hit": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1 },
+              "description": "Pattern id -> number of matches."
+            },
+            "patterns_unhit": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Pattern ids that produced zero hits across every scanned source. Negative-evidence field — the calling agent should not re-check these."
+            },
+            "truncated": {
+              "type": "object",
+              "required": ["logs"],
+              "properties": {
+                "logs": { "type": "boolean" }
+              }
+            },
+            "ms_total": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "contextLine": {
+      "type": "object",
+      "required": ["line_offset", "text"],
+      "properties": {
+        "line_offset": { "type": "integer", "description": "Negative-from-end offset into the scanned source. -1 is the last line." },
+        "ts":          { "type": ["string", "null"], "description": "RFC3339 timestamp if the log source supplied one." },
+        "text":        { "type": "string" }
+      }
+    }
   }
 }
