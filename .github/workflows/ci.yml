@@ -20,17 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: tool versions
-        run: |
-          rustc --version
-          cargo --version
-          rustfmt --version
-          which rustfmt
-      - name: print fmt diff
-        run: cargo fmt --all -- --check
-        continue-on-error: true
-      - name: fail-on-fmt
-        run: cargo fmt --all -- --check
+      - run: cargo fmt --all -- --check
 
   app-clippy:
     runs-on: ubuntu-latest

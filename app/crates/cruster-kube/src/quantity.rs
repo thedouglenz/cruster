@@ -213,10 +213,7 @@ mod tests {
         assert_eq!(parse_memory(&q("1Ki")), Some(1024));
         assert_eq!(parse_memory(&q("2Mi")), Some(2 * 1024 * 1024));
         assert_eq!(parse_memory(&q("1Gi")), Some(1024 * 1024 * 1024));
-        assert_eq!(
-            parse_memory(&q("1Ti")),
-            Some(1024_u64 * 1024 * 1024 * 1024)
-        );
+        assert_eq!(parse_memory(&q("1Ti")), Some(1024_u64 * 1024 * 1024 * 1024));
     }
 
     #[test]
