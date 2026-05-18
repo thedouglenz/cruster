@@ -1024,20 +1024,62 @@ impl App {
             .add_modifier(Modifier::BOLD);
         let muted_on_bg = Style::default().bg(bg).fg(muted_fg);
 
+        // Width budgeting — keep the mode chip visible at all costs.
+        // Reserved cost (always rendered): leading sep + sep after ctx
+        // + mode chip + trailing sep after mode chip = 3+3+4+3 = 13.
+        // Whatever remains gets spent on ctx (truncated if needed),
+        // then optionally env (sep+env_w), then optionally layout
+        // (sep+layout_w).
+        let width = area.width as usize;
+        let sep_w = 3usize;
+        let mode_w = 4usize;
+        let reserved = sep_w + sep_w + mode_w + sep_w;
+
         let sep = Span::styled(" │ ", sep_style);
-        let spans = vec![
-            sep.clone(),
-            Span::styled(self.context.clone(), value_style),
-            sep.clone(),
-            Span::styled(env_text, value_style),
-            sep.clone(),
-            Span::styled("[", bracket_style),
-            Span::styled(mode_text.to_string(), mode_style),
-            Span::styled("]", bracket_style),
-            sep.clone(),
-            Span::styled(layout_text, muted_on_bg),
-            sep,
-        ];
+
+        let spans: Vec<Span<'static>> = if width <= reserved {
+            // Degenerate width: render only the mode chip.
+            vec![
+                Span::styled("[", bracket_style),
+                Span::styled(mode_text.to_string(), mode_style),
+                Span::styled("]", bracket_style),
+            ]
+        } else {
+            let mut budget = width - reserved;
+            let mut ctx_render = self.context.clone();
+            let ctx_w = ctx_render.chars().count();
+            if ctx_w <= budget {
+                budget -= ctx_w;
+            } else {
+                ctx_render = truncate_with_ellipsis(&ctx_render, budget);
+                budget = 0;
+            }
+            let env_w = env_text.chars().count();
+            let layout_w = layout_text.chars().count();
+            let include_env = budget >= sep_w + env_w;
+            if include_env {
+                budget -= sep_w + env_w;
+            }
+            let include_layout = budget >= sep_w + layout_w;
+
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            spans.push(sep.clone());
+            spans.push(Span::styled(ctx_render, value_style));
+            spans.push(sep.clone());
+            if include_env {
+                spans.push(Span::styled(env_text, value_style));
+                spans.push(sep.clone());
+            }
+            spans.push(Span::styled("[", bracket_style));
+            spans.push(Span::styled(mode_text.to_string(), mode_style));
+            spans.push(Span::styled("]", bracket_style));
+            spans.push(sep.clone());
+            if include_layout {
+                spans.push(Span::styled(layout_text, muted_on_bg));
+                spans.push(sep);
+            }
+            spans
+        };
 
         let line = Line::from(spans);
         let bar = Paragraph::new(line).style(Style::default().bg(bg));
@@ -1145,6 +1187,22 @@ fn chrome_inset(area: Rect) -> Rect {
         width: area.width,
         height,
     }
+}
+
+fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    if max_chars == 1 {
+        return "…".into();
+    }
+    let mut out: String = s.chars().take(max_chars - 1).collect();
+    out.push('…');
+    out
 }
 
 fn format_action_hint(key: KeyCode, label: &str) -> String {
@@ -1426,6 +1484,58 @@ mod tests {
             }
         }
         assert!(found, "expected to find 'R' (from [RO]) on row 0");
+    }
+
+    #[test]
+    fn safety_badge_drops_layout_first_when_narrow() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "short-ctx".into();
+        a.environment = Environment::Prod;
+        a.read_only = false;
+        // Width chosen so env name fits but layout label does not.
+        // Budget: reserved(13) + ctx(9) + sep+env(3+4) = 29.
+        // Layout would add sep+layout(3+6) = 9 more -> needs width 38+.
+        let backend = TestBackend::new(30, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row0 = String::new();
+        for x in 0..buf.area().width {
+            row0.push_str(buf[(x, 0)].symbol());
+        }
+        assert!(row0.contains("[RW]"), "row should keep mode chip: {row0:?}");
+        assert!(
+            !row0.contains("single"),
+            "row should not contain layout label: {row0:?}"
+        );
+    }
+
+    #[test]
+    fn safety_badge_truncates_context_when_extremely_narrow() {
+        use cruster_core::Environment;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut a = app();
+        a.context = "a-very-long-context-name-that-cannot-fit".into();
+        a.environment = Environment::Unknown;
+        a.read_only = false;
+        let backend = TestBackend::new(20, 3);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| a.render_safety_badge(f)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row0 = String::new();
+        for x in 0..buf.area().width {
+            row0.push_str(buf[(x, 0)].symbol());
+        }
+        assert!(row0.contains("[RW]"), "mode chip must survive: {row0:?}");
+        assert!(row0.contains('…'), "context should be truncated: {row0:?}");
     }
 
     #[test]
