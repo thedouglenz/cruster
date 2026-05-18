@@ -70,6 +70,9 @@ pub enum Command {
     /// What changed in a namespace recently (rotations, rollouts, image
     /// bumps, workload creations).
     Changed(ChangedArgs),
+    /// Diagnose why a service has no live endpoints.
+    #[command(name = "why-no-endpoints")]
+    WhyNoEndpoints(WhyNoEndpointsArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -270,6 +273,15 @@ pub struct EventsArgs {
 pub struct SchemaArgs {
     /// Verb to print the schema for, e.g. `get-pod`, `describe`, `logs`.
     pub verb: String,
+}
+
+#[derive(Debug, Parser)]
+pub struct WhyNoEndpointsArgs {
+    /// Service name to diagnose.
+    pub service: String,
+    /// Namespace of the service. Defaults to current context namespace.
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
 }
 
 #[cfg(test)]
