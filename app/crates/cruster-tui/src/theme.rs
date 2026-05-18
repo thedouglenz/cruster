@@ -29,6 +29,8 @@ pub struct Theme {
     #[serde(default)]
     pub env_band_fg: EnvBandFg,
     #[serde(default)]
+    pub mode: ModeColors,
+    #[serde(default)]
     pub status: StatusColors,
     #[serde(default)]
     pub sparkline: SparklineColors,
@@ -84,6 +86,23 @@ impl Default for EnvBandFg {
             dev: default_env_band_fg_dev(),
             local: default_env_band_fg_local(),
             unknown: default_env_band_fg_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModeColors {
+    #[serde(default = "default_mode_rw")]
+    pub rw: ThemeColor,
+    #[serde(default = "default_mode_ro")]
+    pub ro: ThemeColor,
+}
+
+impl Default for ModeColors {
+    fn default() -> Self {
+        Self {
+            rw: default_mode_rw(),
+            ro: default_mode_ro(),
         }
     }
 }
@@ -239,6 +258,12 @@ fn default_env_band_fg_local() -> ThemeColor {
 fn default_env_band_fg_unknown() -> ThemeColor {
     ThemeColor::Named("white".into())
 }
+fn default_mode_rw() -> ThemeColor {
+    ThemeColor::Named("red".into())
+}
+fn default_mode_ro() -> ThemeColor {
+    ThemeColor::Named("green".into())
+}
 fn default_selection_fg() -> ThemeColor {
     ThemeColor::Named("cyan".into())
 }
@@ -357,6 +382,13 @@ mod tests {
             Color::DarkGray
         );
         assert_eq!(ThemeColor::Named("reset".into()).as_ratatui(), Color::Reset);
+    }
+
+    #[test]
+    fn mode_colors_defaults() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.mode.rw.as_ratatui(), Color::Red);
+        assert_eq!(t.mode.ro.as_ratatui(), Color::Green);
     }
 
     #[test]
