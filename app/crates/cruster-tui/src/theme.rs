@@ -27,6 +27,8 @@ pub struct Theme {
     #[serde(default)]
     pub env_band: EnvBand,
     #[serde(default)]
+    pub env_band_fg: EnvBandFg,
+    #[serde(default)]
     pub status: StatusColors,
     #[serde(default)]
     pub sparkline: SparklineColors,
@@ -56,6 +58,32 @@ impl Default for EnvBand {
             dev: default_dev(),
             local: default_local(),
             unknown: default_unknown(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnvBandFg {
+    #[serde(default = "default_env_band_fg_prod")]
+    pub prod: ThemeColor,
+    #[serde(default = "default_env_band_fg_staging")]
+    pub staging: ThemeColor,
+    #[serde(default = "default_env_band_fg_dev")]
+    pub dev: ThemeColor,
+    #[serde(default = "default_env_band_fg_local")]
+    pub local: ThemeColor,
+    #[serde(default = "default_env_band_fg_unknown")]
+    pub unknown: ThemeColor,
+}
+
+impl Default for EnvBandFg {
+    fn default() -> Self {
+        Self {
+            prod: default_env_band_fg_prod(),
+            staging: default_env_band_fg_staging(),
+            dev: default_env_band_fg_dev(),
+            local: default_env_band_fg_local(),
+            unknown: default_env_band_fg_unknown(),
         }
     }
 }
@@ -196,6 +224,21 @@ fn default_local() -> ThemeColor {
 fn default_unknown() -> ThemeColor {
     ThemeColor::Named("darkgray".into())
 }
+fn default_env_band_fg_prod() -> ThemeColor {
+    ThemeColor::Named("white".into())
+}
+fn default_env_band_fg_staging() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_dev() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_local() -> ThemeColor {
+    ThemeColor::Named("black".into())
+}
+fn default_env_band_fg_unknown() -> ThemeColor {
+    ThemeColor::Named("white".into())
+}
 fn default_selection_fg() -> ThemeColor {
     ThemeColor::Named("cyan".into())
 }
@@ -314,5 +357,15 @@ mod tests {
             Color::DarkGray
         );
         assert_eq!(ThemeColor::Named("reset".into()).as_ratatui(), Color::Reset);
+    }
+
+    #[test]
+    fn env_band_fg_defaults_pair_with_env_band_bgs() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.env_band_fg.prod.as_ratatui(), Color::White);
+        assert_eq!(t.env_band_fg.staging.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.dev.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.local.as_ratatui(), Color::Black);
+        assert_eq!(t.env_band_fg.unknown.as_ratatui(), Color::White);
     }
 }
