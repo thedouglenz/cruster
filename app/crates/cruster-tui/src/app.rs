@@ -1276,8 +1276,14 @@ mod tests {
 
     #[test]
     fn footer_renders_applicable_actions() {
-        let a = app();
-        // No pods → only actions that don't require a selection apply.
+        // Swap the default dashboard view (which loads pins from
+        // ~/.config/cruster/dashboard.toml and so may have a selection
+        // depending on the developer's machine) for a known-empty pods
+        // view. The contract under test is "selection-requiring actions
+        // are filtered out when nothing is selected", which is view-
+        // agnostic.
+        let mut a = app();
+        a.current_view = Box::new(crate::views::pods::PodsView::new());
         let labels: Vec<&'static str> = a
             .actions
             .applicable(a.current_view.as_ref())
