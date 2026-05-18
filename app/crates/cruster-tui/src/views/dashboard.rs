@@ -1193,14 +1193,14 @@ fn truncate_label(s: &str, max_chars: u16) -> String {
 
 /// Builds the two `Line`s of the dashboard chip header (identity row +
 /// scale row). Pure — takes a snapshot of `Summary` and renders styled
-/// spans against `theme`. `width` is consulted by `fit_chips_into_line`
-/// for trailing-chip truncation (Task 7); the basic helper renders all
-/// chips unconditionally.
+/// spans against `theme`. When `width` cannot fit all chips, trailing
+/// chips are dropped and a muted `…` is appended after the last
+/// fitting chip.
 fn build_header_chips(
     summary: &Summary,
     context_name: &str,
     theme: &Theme,
-    _width: u16,
+    width: u16,
 ) -> Vec<Line<'static>> {
     let label_style = Style::default()
         .fg(theme.chip.label_fg.as_ratatui())
@@ -1208,7 +1208,7 @@ fn build_header_chips(
     let value_style = Style::default()
         .fg(theme.chip.value_fg.as_ratatui())
         .add_modifier(Modifier::BOLD);
-    let gap = Span::raw("   ");
+    let ellipsis_style = Style::default().fg(theme.muted_fg.as_ratatui());
 
     let nodes_text = format!("{}/{} ready", summary.nodes_ready, summary.nodes_total);
     let nodes_color = if summary.nodes_total == 0 {
@@ -1229,32 +1229,65 @@ fn build_header_chips(
         .clone()
         .unwrap_or_else(|| "?".into());
 
-    let identity = Line::from(vec![
-        Span::styled("CONTEXT ", label_style),
-        Span::styled(context_name.to_string(), value_style),
-        gap.clone(),
-        Span::styled("K8S ", label_style),
-        Span::styled(k8s_version, value_style),
-        gap.clone(),
-        Span::styled("NODES ", label_style),
-        Span::styled(nodes_text, nodes_value_style),
-        gap.clone(),
-        Span::styled("NS ", label_style),
-        Span::styled(summary.namespaces.to_string(), value_style),
-    ]);
+    let identity_chips: Vec<(&str, String, Style)> = vec![
+        ("CONTEXT ", context_name.to_string(), value_style),
+        ("K8S ", k8s_version, value_style),
+        ("NODES ", nodes_text, nodes_value_style),
+        ("NS ", summary.namespaces.to_string(), value_style),
+    ];
+    let scale_chips: Vec<(&str, String, Style)> = vec![
+        ("PODS ", summary.pods_total.to_string(), value_style),
+        ("DEPLOYS ", summary.deployments_total.to_string(), value_style),
+        ("SVCS ", summary.services.to_string(), value_style),
+    ];
 
-    let scale = Line::from(vec![
-        Span::styled("PODS ", label_style),
-        Span::styled(summary.pods_total.to_string(), value_style),
-        gap.clone(),
-        Span::styled("DEPLOYS ", label_style),
-        Span::styled(summary.deployments_total.to_string(), value_style),
-        gap,
-        Span::styled("SVCS ", label_style),
-        Span::styled(summary.services.to_string(), value_style),
-    ]);
-
+    let identity = fit_chips_into_line(&identity_chips, label_style, ellipsis_style, width);
+    let scale = fit_chips_into_line(&scale_chips, label_style, ellipsis_style, width);
     vec![identity, scale]
+}
+
+/// Fit chips left-to-right within `width`. Drops trailing chips that
+/// don't fit and appends a muted `…` (only when at least one chip was
+/// placed and at least one chip was dropped, and the ellipsis itself
+/// fits).
+fn fit_chips_into_line(
+    chips: &[(&str, String, Style)],
+    label_style: Style,
+    ellipsis_style: Style,
+    width: u16,
+) -> Line<'static> {
+    let gap = "   ";
+    let gap_w = gap.chars().count();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut used: usize = 0;
+    let mut placed = 0usize;
+
+    for (i, (label, value, value_style)) in chips.iter().enumerate() {
+        let chip_w = label.chars().count() + value.chars().count();
+        let needs_gap = i > 0;
+        let total_w = if needs_gap { gap_w + chip_w } else { chip_w };
+        if used + total_w > width as usize {
+            break;
+        }
+        if needs_gap {
+            spans.push(Span::raw(gap.to_string()));
+        }
+        spans.push(Span::styled(label.to_string(), label_style));
+        spans.push(Span::styled(value.clone(), *value_style));
+        used += total_w;
+        placed += 1;
+    }
+
+    let dropped = chips.len().saturating_sub(placed);
+    if dropped > 0 && placed > 0 {
+        let suffix_w = gap_w + 1; // gap + '…' (1 char)
+        if used + suffix_w <= width as usize {
+            spans.push(Span::raw(gap.to_string()));
+            spans.push(Span::styled("…".to_string(), ellipsis_style));
+        }
+    }
+
+    Line::from(spans)
 }
 
 fn summarise(
@@ -1682,6 +1715,26 @@ mod tests {
         let lines = build_header_chips(&make_summary(0, 3), "ctx", &theme, 200);
         let span = line_span_with(&lines[0], "0/3").unwrap();
         assert_eq!(span.style.fg, Some(theme.gauge.danger.as_ratatui()));
+    }
+
+    #[test]
+    fn build_header_chips_truncates_trailing_chips_when_narrow() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "ctx", &theme, 18);
+        let l1 = line_text(&lines[0]);
+        assert!(l1.contains("CONTEXT"), "CONTEXT must survive: {l1:?}");
+        assert!(l1.contains('…'), "ellipsis expected: {l1:?}");
+        assert!(!l1.contains("K8S"), "K8S should be dropped: {l1:?}");
+    }
+
+    #[test]
+    fn build_header_chips_truncation_ellipsis_uses_muted_fg() {
+        let theme = crate::theme::Theme::terminal_default();
+        let summary = make_summary(3, 3);
+        let lines = build_header_chips(&summary, "ctx", &theme, 18);
+        let span = line_span_with(&lines[0], "…").unwrap();
+        assert_eq!(span.style.fg, Some(theme.muted_fg.as_ratatui()));
     }
 
     #[test]
