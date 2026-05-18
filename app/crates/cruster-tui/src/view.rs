@@ -71,4 +71,11 @@ pub trait ResourceView: Send {
     fn take_pending_view_switch(&mut self) -> Option<&'static str> {
         None
     }
+
+    /// A view may request a toast message after `handle_key` returns.
+    /// The app calls this once per key event and consumes the result.
+    /// Default: never.
+    fn take_pending_toast(&mut self) -> Option<String> {
+        None
+    }
 }

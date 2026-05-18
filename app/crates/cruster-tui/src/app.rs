@@ -58,7 +58,12 @@ pub enum PaneFocus {
 pub struct App {
     registry: StoreRegistry,
     client: Option<Client>,
-    current_view: Box<dyn ResourceView>,
+    /// Currently active view. `None` when the dashboard is active (use
+    /// `dashboard` field instead).
+    current_view: Option<Box<dyn ResourceView>>,
+    /// Persisted dashboard view — never dropped, so per-pin sparkline
+    /// history survives `dashboard -> pods -> dashboard`.
+    dashboard: DashboardView,
     actions: crate::action::ActionRegistry,
     command: CommandLine,
     describe_pane: DescribePane,
@@ -99,7 +104,8 @@ impl App {
         Self {
             registry,
             client,
-            current_view: Box::new(DashboardView::new()),
+            current_view: None,
+            dashboard: DashboardView::new(),
             actions: crate::action_shipped::default_registry(),
             command: CommandLine::new(),
             describe_pane: DescribePane::new(),
@@ -128,6 +134,22 @@ impl App {
             prompt_leader_armed: false,
             pending_prompt_trigger: None,
             pending_export: false,
+        }
+    }
+
+    /// Returns a reference to the active view (dashboard or other).
+    fn active_view(&self) -> &dyn ResourceView {
+        match &self.current_view {
+            Some(v) => v.as_ref(),
+            None => &self.dashboard,
+        }
+    }
+
+    /// Returns a mutable reference to the active view (dashboard or other).
+    fn active_view_mut(&mut self) -> &mut dyn ResourceView {
+        match &mut self.current_view {
+            Some(v) => v.as_mut(),
+            None => &mut self.dashboard,
         }
     }
 
@@ -211,7 +233,7 @@ impl App {
                 LoopState::Continue
             }
             S::Describe => {
-                if let Some((title, yaml)) = self.current_view.selected_yaml() {
+                if let Some((title, yaml)) = self.active_view().selected_yaml() {
                     self.describe_pane.open(title, yaml);
                     self.pane_focus = PaneFocus::Describe;
                 } else {
@@ -291,7 +313,7 @@ impl App {
                     self.toast = Some("diagnostic export is a Pro feature".into());
                     return LoopState::Continue;
                 }
-                if self.current_view.selected_key().is_none() {
+                if self.active_view().selected_key().is_none() {
                     self.toast = Some("nothing selected to export".into());
                     return LoopState::Continue;
                 }
@@ -306,11 +328,11 @@ impl App {
     }
 
     fn pin_current_selection(&mut self) {
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected to pin".into());
             return;
         };
-        if self.current_view.id() == "dashboard" {
+        if self.active_view().id() == "dashboard" {
             self.toast = Some("already on dashboard — press 'a' from a list view".into());
             return;
         }
@@ -328,7 +350,7 @@ impl App {
 
     fn synthetic_key_to_view(&mut self, code: KeyCode) {
         let key = KeyEvent::new(code, KeyModifiers::NONE);
-        self.current_view.handle_key(key);
+        self.active_view_mut().handle_key(key);
     }
 
     fn open_themes_palette(&mut self) {
@@ -385,15 +407,11 @@ impl App {
         };
         for step in &workflow.steps {
             match step {
-                crate::workflows::Step::SwitchView(id) => match Self::view_for_id(id) {
-                    Some(v) => {
-                        self.current_view = v;
-                        self.history.record(id, None);
-                    }
-                    None => self.toast = Some(format!("workflow: unknown view {id}")),
-                },
+                crate::workflows::Step::SwitchView(id) => {
+                    self.switch_to_view_id(id);
+                }
                 crate::workflows::Step::SetFilter(query) => {
-                    self.current_view.set_filter(Filter::parse(query));
+                    self.active_view_mut().set_filter(Filter::parse(query));
                 }
             }
         }
@@ -457,7 +475,7 @@ impl App {
     fn invoke_action(&mut self, id: &str) -> LoopState {
         match id {
             "describe" => {
-                if let Some((title, yaml)) = self.current_view.selected_yaml() {
+                if let Some((title, yaml)) = self.active_view().selected_yaml() {
                     self.describe_pane.open(title, yaml);
                 } else {
                     self.toast = Some("nothing selected".into());
@@ -506,7 +524,7 @@ impl App {
             .and_then(|o| o.live_filter_buffer())
             .map(|s| s.to_string());
         if let Some(buf) = buffer {
-            self.current_view.set_filter(Filter::parse(&buf));
+            self.active_view_mut().set_filter(Filter::parse(&buf));
         }
     }
 
@@ -514,7 +532,7 @@ impl App {
         let Some(describe) = self.actions.by_id("describe") else {
             return;
         };
-        match describe.kubectl_equivalent(self.current_view.as_ref()) {
+        match describe.kubectl_equivalent(self.active_view()) {
             Some(cmd) => match crate::kubectl::copy_to_clipboard(&cmd) {
                 Ok(()) => self.toast = Some(format!("copied: {cmd}")),
                 Err(e) => self.toast = Some(format!("copy failed: {e}")),
@@ -525,14 +543,30 @@ impl App {
 
     /// Replace the currently active view.
     pub fn switch_view(&mut self, view: Box<dyn ResourceView>) {
-        self.current_view = view;
+        self.current_view = Some(view);
     }
 
-    /// Construct a fresh view for a given id. Returns `None` for
-    /// unknown ids.
+    /// Switch to a view by id. Dashboard is handled specially to reuse
+    /// the cached instance (preserving sparkline history).
+    fn switch_to_view_id(&mut self, id: &str) {
+        if id == "dashboard" {
+            self.dashboard.reload_pins();
+            self.current_view = None;
+            self.history.record(id, None);
+        } else if let Some(v) = Self::view_for_id(id) {
+            self.current_view = Some(v);
+            self.history.record(id, None);
+        } else {
+            self.toast = Some(format!("no view for id: {id}"));
+        }
+    }
+
+    /// Construct a fresh view for a given id (except dashboard). Returns
+    /// `None` for unknown ids. Dashboard returns `None` since it's cached
+    /// on App; use `switch_to_view_id` for that.
     fn view_for_id(id: &str) -> Option<Box<dyn ResourceView>> {
         Some(match id {
-            "dashboard" => Box::new(DashboardView::new()),
+            "dashboard" => return None,
             "pods" => Box::new(PodsView::new()),
             "deployments" => Box::new(DeploymentsView::new()),
             "services" => Box::new(ServicesView::new()),
@@ -610,11 +644,8 @@ impl App {
                         }
                     } else if let Some(name) = id.strip_prefix("theme:") {
                         self.apply_theme(name);
-                    } else if let Some(v) = Self::view_for_id(&id) {
-                        self.current_view = v;
-                        self.history.record(&id, None);
                     } else {
-                        self.toast = Some(format!("no view for id: {id}"));
+                        self.switch_to_view_id(&id);
                     }
                 }
             }
@@ -646,13 +677,9 @@ impl App {
         if self.command.is_active() {
             match self.command.handle_key(key) {
                 CommandAction::None | CommandAction::Cancel => {}
-                CommandAction::SwitchTo(id) => match Self::view_for_id(&id) {
-                    Some(v) => {
-                        self.current_view = v;
-                        self.history.record(&id, None);
-                    }
-                    None => self.toast = Some(format!("no view for id: {id}")),
-                },
+                CommandAction::SwitchTo(id) => {
+                    self.switch_to_view_id(&id);
+                }
                 CommandAction::UnknownAlias(alias) => {
                     self.toast = Some(format!("unknown alias: :{alias}"));
                 }
@@ -667,12 +694,12 @@ impl App {
             return self.dispatch_semantic(action);
         }
 
-        let state = self.current_view.handle_key(key);
-        if let Some(id) = self.current_view.take_pending_view_switch() {
-            if let Some(v) = Self::view_for_id(id) {
-                self.current_view = v;
-                self.history.record(id, None);
-            }
+        let state = self.active_view_mut().handle_key(key);
+        if let Some(id) = self.active_view_mut().take_pending_view_switch() {
+            self.switch_to_view_id(id);
+        }
+        if let Some(msg) = self.active_view_mut().take_pending_toast() {
+            self.toast = Some(msg);
         }
         state
     }
@@ -685,7 +712,7 @@ impl App {
         // Refuse to edit Secrets — the selected_yaml() for SecretsView
         // returns redacted YAML, and applying that would clobber the
         // real values. For v1, point users to kubectl.
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
         };
@@ -696,7 +723,7 @@ impl App {
             );
             return;
         }
-        let Some((_, yaml)) = self.current_view.selected_yaml() else {
+        let Some((_, yaml)) = self.active_view().selected_yaml() else {
             self.toast = Some("nothing selected".into());
             return;
         };
@@ -711,7 +738,7 @@ impl App {
             self.toast = Some("read-only mode: port-forward disabled (Ctrl+R to toggle)".into());
             return;
         }
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
         };
@@ -740,11 +767,11 @@ impl App {
     }
 
     fn exec_into_selection(&mut self) {
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
         };
-        if !self.current_view.selected_can_exec() {
+        if !self.active_view().selected_can_exec() {
             self.toast = Some(format!(
                 "exec unavailable: {} is not a running pod with a ready container",
                 key.name
@@ -757,7 +784,7 @@ impl App {
     }
 
     fn open_logs_for_selection(&mut self) {
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
         };
@@ -787,7 +814,10 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     ) -> anyhow::Result<()> {
         loop {
-            self.current_view.refresh(&self.registry).await;
+            match &mut self.current_view {
+                Some(v) => v.refresh(&self.registry).await,
+                None => self.dashboard.refresh(&self.registry).await,
+            }
             if self.pending_open_relationships {
                 self.pending_open_relationships = false;
                 self.open_relationships_overlay().await;
@@ -826,10 +856,10 @@ impl App {
 
         let mut resource = None;
         let mut events: Vec<EventSummary> = Vec::new();
-        let selected = self.current_view.selected_key();
+        let selected = self.active_view().selected_key();
         if let Some(key) = &selected {
             let raw_yaml = self
-                .current_view
+                .active_view()
                 .selected_yaml()
                 .map(|(_, y)| y)
                 .unwrap_or_default();
@@ -933,7 +963,7 @@ impl App {
     }
 
     async fn open_relationships_overlay(&mut self) {
-        let Some(key) = self.current_view.selected_key() else {
+        let Some(key) = self.active_view().selected_key() else {
             self.toast = Some("nothing selected".into());
             return;
         };
@@ -963,7 +993,7 @@ impl App {
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(view_area);
-            self.current_view.render(frame, chunks[0], &self.theme);
+            self.active_view().render(frame, chunks[0], &self.theme);
             if self.describe_pane.is_open() {
                 self.describe_pane
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Describe);
@@ -972,7 +1002,7 @@ impl App {
                     .render(frame, chunks[1], self.pane_focus == PaneFocus::Logs);
             }
         } else {
-            self.current_view.render(frame, view_area, &self.theme);
+            self.active_view().render(frame, view_area, &self.theme);
         }
         self.render_safety_badge(frame);
         self.render_action_footer(frame);
@@ -1099,7 +1129,7 @@ impl App {
         }
         let hints: Vec<String> = self
             .actions
-            .applicable(self.current_view.as_ref())
+            .applicable(self.active_view())
             .map(|a| format_action_hint(a.key(), a.label()))
             .collect();
         if hints.is_empty() {
@@ -1258,7 +1288,7 @@ mod tests {
     #[test]
     fn default_landing_view_is_dashboard() {
         let a = app();
-        assert_eq!(a.current_view.id(), "dashboard");
+        assert_eq!(a.active_view().id(), "dashboard");
     }
 
     #[test]
@@ -1309,7 +1339,7 @@ mod tests {
             a.handle_key(press(KeyCode::Char(ch)));
         }
         a.handle_key(press(KeyCode::Enter));
-        assert_eq!(a.current_view.id(), "deployments");
+        assert_eq!(a.active_view().id(), "deployments");
     }
 
     #[test]
@@ -1383,10 +1413,10 @@ mod tests {
         // are filtered out when nothing is selected", which is view-
         // agnostic.
         let mut a = app();
-        a.current_view = Box::new(crate::views::pods::PodsView::new());
+        a.current_view = Some(Box::new(crate::views::pods::PodsView::new()));
         let labels: Vec<&'static str> = a
             .actions
-            .applicable(a.current_view.as_ref())
+            .applicable(a.active_view())
             .map(|act| act.label())
             .collect();
         assert!(labels.contains(&"Switch kind"));
@@ -1597,5 +1627,42 @@ mod tests {
         assert!(hints.contains('d'));
         assert!(hints.contains('w'));
         assert!(hints.contains('s'));
+    }
+
+    #[test]
+    fn dashboard_is_reused_across_view_switches() {
+        let mut a = app();
+        assert_eq!(a.active_view().id(), "dashboard");
+
+        // Get a pointer to the dashboard (as a raw memory address) to verify
+        // it's the same instance after switching back.
+        let dashboard_ptr = &a.dashboard as *const _ as usize;
+
+        // Switch away to pods.
+        a.switch_to_view_id("pods");
+        assert_eq!(a.active_view().id(), "pods");
+
+        // Switch back to dashboard.
+        a.switch_to_view_id("dashboard");
+        assert_eq!(a.active_view().id(), "dashboard");
+
+        // Dashboard should be the exact same instance (sparkline history preserved).
+        let dashboard_ptr_after = &a.dashboard as *const _ as usize;
+        assert_eq!(
+            dashboard_ptr, dashboard_ptr_after,
+            "dashboard should be the same cached instance"
+        );
+    }
+
+    #[test]
+    fn switch_to_dashboard_succeeds() {
+        let mut a = app();
+
+        // Switch away and back to verify reload_pins path doesn't panic.
+        a.switch_to_view_id("pods");
+        assert_eq!(a.active_view().id(), "pods");
+
+        a.switch_to_view_id("dashboard");
+        assert_eq!(a.active_view().id(), "dashboard");
     }
 }
