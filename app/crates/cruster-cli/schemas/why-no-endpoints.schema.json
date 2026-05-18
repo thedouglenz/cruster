@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/why-no-endpoints/v1.json",
+  "title": "WhyNoEndpoints",
+  "description": "Structured diagnosis explaining why a Service has no ready endpoints.",
+  "type": "object",
+  "required": ["service", "reason", "evidence"],
+  "properties": {
+    "service": {
+      "type": "string",
+      "description": "Name of the service being diagnosed"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "no_selector",
+        "no_pods_match_selector",
+        "pods_not_ready",
+        "port_mismatch",
+        "endpointslice_stale",
+        "unknown"
+      ],
+      "description": "Primary cause of the missing endpoints"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Supporting data for the diagnosis",
+      "properties": {
+        "selector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "The service's label selector"
+        },
+        "matching_pods": {
+          "type": "integer",
+          "description": "Number of pods matching the selector"
+        },
+        "ready_pods": {
+          "type": "integer",
+          "description": "Number of matching pods with Ready=True"
+        },
+        "service_ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": ["string", "null"] },
+              "port": { "type": "integer" },
+              "target_port": { "type": "string" },
+              "protocol": { "type": "string" }
+            }
+          },
+          "description": "Ports defined on the service"
+        },
+        "container_ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "container": { "type": "string" },
+              "port": { "type": "integer" },
+              "name": { "type": ["string", "null"] },
+              "protocol": { "type": "string" }
+            }
+          },
+          "description": "Ports exposed by containers in matching pods"
+        },
+        "endpointslice_age": {
+          "type": "string",
+          "description": "Creation timestamp of the EndpointSlice (RFC3339)"
+        },
+        "pod_phases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Pod name to phase mapping"
+        },
+        "not_ready_reasons": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Reasons why pods are not ready"
+        }
+      },
+      "additionalProperties": true
+    },
+    "suggested_fix": {
+      "type": "string",
+      "description": "Human-readable suggestion for resolving the issue"
+    }
+  }
+}

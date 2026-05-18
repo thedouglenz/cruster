@@ -611,6 +611,7 @@ dependencies = [
  "chrono",
  "dirs",
  "ed25519-dalek",
+ "k8s-openapi",
  "serde",
  "serde_json",
  "toml",

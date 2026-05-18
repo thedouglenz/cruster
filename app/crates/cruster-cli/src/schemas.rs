@@ -40,6 +40,10 @@ pub const SCHEMAS: &[(&str, &str)] = &[
     pair("diff", include_str!("../schemas/diff.schema.json")),
     pair("timeline", include_str!("../schemas/timeline.schema.json")),
     pair("changed", include_str!("../schemas/changed.schema.json")),
+    pair(
+        "why-no-endpoints",
+        include_str!("../schemas/why-no-endpoints.schema.json"),
+    ),
 ];
 
 pub fn lookup(verb: &str) -> Option<&'static str> {
@@ -78,6 +82,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 14);
+        assert_eq!(SCHEMAS.len(), 15);
     }
 }
