@@ -84,6 +84,8 @@ pub enum Command {
     /// Diagnose why a Pod is stuck in Pending state.
     #[command(name = "why-pending")]
     WhyPending(WhyPendingArgs),
+    /// Build a structured JSON bundle for a resource (same data as export, JSON output).
+    Bundle(BundleArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -144,6 +146,17 @@ pub struct ExportArgs {
     /// Write the markdown to this file instead of stdout.
     #[arg(long, short = 'o')]
     pub output: Option<String>,
+    /// Tail this many log lines (Pod resources only). Default 100.
+    #[arg(long, default_value = "100")]
+    pub tail: i64,
+}
+
+#[derive(Debug, Parser)]
+pub struct BundleArgs {
+    /// Resource reference: `kind/name`, e.g. `pod/nginx`.
+    pub reference: String,
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
     /// Tail this many log lines (Pod resources only). Default 100.
     #[arg(long, default_value = "100")]
     pub tail: i64,

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bundle",
+  "type": "object",
+  "required": ["cluster", "resource", "events", "logs"],
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "required": ["name", "context"],
+      "properties": {
+        "name":    { "type": "string" },
+        "context": { "type": "string" },
+        "environment": { "type": "string" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["kind", "name", "raw"],
+      "properties": {
+        "kind":      { "type": "string" },
+        "namespace": { "type": ["string", "null"] },
+        "name":      { "type": "string" },
+        "phase":     { "type": ["string", "null"] },
+        "age":       { "type": ["string", "null"] },
+        "raw":       { "type": "object", "description": "full object as JSON" }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["time", "type", "reason", "message"],
+        "properties": {
+          "time":    { "type": "string", "format": "date-time" },
+          "type":    { "type": "string", "enum": ["Normal", "Warning"] },
+          "reason":  { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "logs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "last N log lines (pods only); empty for other kinds"
+    }
+  }
+}

@@ -46,10 +46,21 @@ Schemas live in `cruster schema <verb>` and inline in `cruster help-json`.
 
 ## Primary call (when the symptom is unclear)
 
-Cruster ships a single command that bundles manifest, recent events,
-and a log tail into one markdown report. Reach for this before
-running individual `kubectl describe` / `kubectl logs` calls — it's
-one round-trip instead of three.
+Cruster ships commands that bundle manifest, recent events, and a log
+tail into one call. Reach for these before running individual `kubectl
+describe` / `kubectl logs` calls — it's one round-trip instead of three.
+
+**Structured JSON (for programmatic parsing):**
+
+```bash
+cruster bundle pod/<name> -n <namespace>
+```
+
+Output: a JSON object matching `schemas/bundle.schema.json` with fields
+for `cluster`, `resource` (including the full object as `raw` JSON),
+`events`, and `logs`. Ideal when you need to parse fields programmatically.
+
+**Markdown (for human/LLM chat consumption):**
 
 ```bash
 cruster export pod/<name> -n <namespace>
@@ -60,9 +71,7 @@ manifest (YAML), recent events involving the pod, and the last 100
 log lines. Write it to a file with `-o report.md` if you want to
 attach it to a ticket.
 
-If the pod has multiple containers and you want logs from a specific
-one, use `--tail <N>` to widen the log window — then look for the
-relevant container's lines in the bundle.
+Both commands accept `--tail <N>` to control how many log lines to fetch.
 
 ## Follow-up calls (only if the bundle isn't enough)
 
