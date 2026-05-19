@@ -178,6 +178,52 @@ impl Action for Quit {
     }
 }
 
+pub struct Delete;
+impl Action for Delete {
+    fn id(&self) -> &'static str {
+        "delete"
+    }
+    fn label(&self) -> &'static str {
+        "Delete"
+    }
+    fn description(&self) -> &'static str {
+        "Confirm + kubectl delete the selection (with propagation choice)"
+    }
+    fn key(&self) -> KeyCode {
+        KeyCode::Char('D')
+    }
+    fn is_applicable(&self, view: &dyn ResourceView) -> bool {
+        view.selected_key().is_some()
+    }
+    fn is_destructive(&self) -> bool {
+        true
+    }
+    fn kubectl_equivalent(&self, view: &dyn ResourceView) -> Option<String> {
+        let key = view.selected_key()?;
+        Some(crate::actions::delete::kubectl_command(
+            &key,
+            crate::actions::delete::PropagationPolicy::Background,
+            false,
+        ))
+    }
+}
+
+pub struct Help;
+impl Action for Help {
+    fn id(&self) -> &'static str {
+        "help"
+    }
+    fn label(&self) -> &'static str {
+        "Help"
+    }
+    fn description(&self) -> &'static str {
+        "Show every keybind in an overlay"
+    }
+    fn key(&self) -> KeyCode {
+        KeyCode::Char('?')
+    }
+}
+
 pub struct CopyKubectl;
 impl Action for CopyKubectl {
     fn id(&self) -> &'static str {
@@ -213,6 +259,8 @@ pub fn default_registry() -> crate::action::ActionRegistry {
     r.register(Box::new(Exec));
     r.register(Box::new(PortForward));
     r.register(Box::new(Edit));
+    r.register(Box::new(Delete));
+    r.register(Box::new(Help));
     r.register(Box::new(SwitchKind));
     r.register(Box::new(Quit));
     r.register(Box::new(CopyKubectl));
@@ -224,21 +272,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_registry_includes_eight_shipped_actions() {
+    fn default_registry_includes_all_shipped_actions() {
         let r = default_registry();
-        assert_eq!(r.all().len(), 8);
+        assert_eq!(r.all().len(), 10);
         for id in [
             "describe",
             "logs",
             "exec",
             "port-forward",
             "edit",
+            "delete",
+            "help",
             "switch-kind",
             "quit",
             "copy-kubectl",
         ] {
             assert!(r.by_id(id).is_some(), "missing action: {id}");
         }
+    }
+
+    #[test]
+    fn delete_is_destructive() {
+        assert!(Delete.is_destructive());
+    }
+
+    #[test]
+    fn delete_kubectl_equivalent_uses_background_default() {
+        let key = cruster_core::ResourceKey::namespaced("Pod", "default", "nginx");
+        struct V(cruster_core::ResourceKey);
+        #[async_trait::async_trait]
+        impl ResourceView for V {
+            fn id(&self) -> &'static str {
+                "test"
+            }
+            async fn refresh(&mut self, _r: &cruster_kube::StoreRegistry) {}
+            fn render(
+                &self,
+                _f: &mut ratatui::Frame<'_>,
+                _area: ratatui::layout::Rect,
+                _theme: &crate::theme::Theme,
+            ) {
+            }
+            fn handle_key(&mut self, _k: crossterm::event::KeyEvent) -> crate::app::LoopState {
+                crate::app::LoopState::Continue
+            }
+            fn selected_key(&self) -> Option<ResourceKey> {
+                Some(self.0.clone())
+            }
+        }
+        assert_eq!(
+            Delete.kubectl_equivalent(&V(key)),
+            Some("kubectl delete pod nginx -n default --cascade=background".into())
+        );
     }
 
     #[test]

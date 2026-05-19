@@ -34,4 +34,16 @@ pub trait Overlay: Send {
     fn port_forward_payload(&self) -> Option<(cruster_core::ResourceKey, String)> {
         None
     }
+
+    /// If this overlay is the delete modal, return its target resource
+    /// key + chosen propagation policy + force flag. Default `None`.
+    fn delete_payload(
+        &self,
+    ) -> Option<(
+        cruster_core::ResourceKey,
+        crate::actions::delete::PropagationPolicy,
+        bool,
+    )> {
+        None
+    }
 }

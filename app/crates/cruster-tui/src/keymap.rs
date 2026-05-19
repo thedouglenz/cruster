@@ -37,6 +37,10 @@ pub enum SemanticAction {
     ExportDiagnostic,
     /// Pin the currently selected resource to the pulse dashboard.
     PinToDashboard,
+    /// Open the delete modal for the current selection.
+    Delete,
+    /// Open the help overlay (full keybind cheat sheet).
+    OpenHelp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -101,6 +105,8 @@ impl Keymap {
         m.insert((KeyCode::Char('P'), none), SemanticAction::OpenPromptLeader);
         m.insert((KeyCode::Char('E'), none), SemanticAction::ExportDiagnostic);
         m.insert((KeyCode::Char('a'), none), SemanticAction::PinToDashboard);
+        m.insert((KeyCode::Char('D'), none), SemanticAction::Delete);
+        m.insert((KeyCode::Char('?'), none), SemanticAction::OpenHelp);
         Self { bindings: m }
     }
 
@@ -124,6 +130,12 @@ impl Keymap {
 
     pub fn resolve(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<SemanticAction> {
         self.bindings.get(&(code, modifiers)).copied()
+    }
+
+    /// Iterate over every (chord → action) binding. Used by the help
+    /// overlay to render the cheat sheet.
+    pub fn entries(&self) -> impl Iterator<Item = (&(KeyCode, KeyModifiers), &SemanticAction)> {
+        self.bindings.iter()
     }
 }
 
