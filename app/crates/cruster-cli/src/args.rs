@@ -78,6 +78,9 @@ pub enum Command {
     /// Diagnose why a pod is in CrashLoopBackOff.
     #[command(name = "why-crashloop")]
     WhyCrashloop(WhyCrashloopArgs),
+    /// Diagnose why a pod's init container is failing.
+    #[command(name = "why-init-failure")]
+    WhyInitFailure(WhyInitFailureArgs),
     /// Diagnose why a Pod is stuck in Pending state.
     #[command(name = "why-pending")]
     WhyPending(WhyPendingArgs),
@@ -307,6 +310,18 @@ pub struct WhyCrashloopArgs {
     #[arg(long, short = 'n')]
     pub namespace: Option<String>,
     /// Number of log lines to fetch. Default 50.
+    #[arg(long, default_value = "50")]
+    pub tail: i64,
+}
+
+#[derive(Debug, Parser)]
+pub struct WhyInitFailureArgs {
+    /// Pod name (without kind prefix; this verb is pod-specific).
+    pub pod: String,
+    /// Namespace. Defaults to the default namespace.
+    #[arg(long, short = 'n')]
+    pub namespace: Option<String>,
+    /// Number of init container log lines to fetch. Default 50.
     #[arg(long, default_value = "50")]
     pub tail: i64,
 }
