@@ -1,5 +1,6 @@
 //! CLI verb handlers (one module per verb).
 
+pub mod bundle;
 pub mod changed;
 pub mod describe;
 pub mod diff;
@@ -41,5 +42,6 @@ pub async fn dispatch(cli: Cli) -> anyhow::Result<()> {
         Command::WhyCrashloop(args) => why_crashloop::run(&cli, args).await,
         Command::WhyInitFailure(args) => why_init_failure::run(&cli, args).await,
         Command::WhyPending(args) => why_pending::run(&cli, args).await,
+        Command::Bundle(args) => bundle::run(&cli, args).await,
     }
 }

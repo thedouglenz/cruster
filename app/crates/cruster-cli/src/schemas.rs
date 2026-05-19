@@ -8,6 +8,7 @@ const fn pair(name: &'static str, body: &'static str) -> (&'static str, &'static
 }
 
 pub const SCHEMAS: &[(&str, &str)] = &[
+    pair("bundle", include_str!("../schemas/bundle.schema.json")),
     pair("get-pod", include_str!("../schemas/get-pod.schema.json")),
     pair(
         "get-deployment",
@@ -102,6 +103,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 20);
+        assert_eq!(SCHEMAS.len(), 21);
     }
 }
