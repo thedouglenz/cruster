@@ -129,7 +129,15 @@ impl Keymap {
     }
 
     pub fn resolve(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<SemanticAction> {
-        self.bindings.get(&(code, modifiers)).copied()
+        // Terminals disagree on whether `Shift+letter` arrives with the
+        // SHIFT bit set (kitty-style enhancement) or already folded
+        // into the uppercase char (vanilla ANSI). Strip SHIFT from
+        // uppercase-char chords so a single binding works on both.
+        let lookup_mods = match code {
+            KeyCode::Char(c) if c.is_ascii_uppercase() => modifiers & !KeyModifiers::SHIFT,
+            _ => modifiers,
+        };
+        self.bindings.get(&(code, lookup_mods)).copied()
     }
 
     /// Iterate over every (chord → action) binding. Used by the help
@@ -216,5 +224,71 @@ mod tests {
     #[test]
     fn preset_default_is_normal() {
         assert_eq!(Preset::default(), Preset::Normal);
+    }
+
+    #[test]
+    fn uppercase_chord_resolves_with_or_without_shift_modifier() {
+        // Some terminals send Shift+letter as (Char('D'), SHIFT);
+        // others send it as (Char('D'), NONE). Both must hit the
+        // same binding so a capital-letter chord works regardless.
+        let k = Keymap::normal();
+        assert_eq!(
+            k.resolve(KeyCode::Char('D'), KeyModifiers::NONE),
+            Some(SemanticAction::Delete),
+        );
+        assert_eq!(
+            k.resolve(KeyCode::Char('D'), KeyModifiers::SHIFT),
+            Some(SemanticAction::Delete),
+        );
+        // Same shape for every other capital binding the user might hit.
+        for (ch, expected) in [
+            ('G', SemanticAction::MoveBottom),
+            ('H', SemanticAction::OpenHistory),
+            ('W', SemanticAction::OpenWorkflows),
+            ('T', SemanticAction::OpenThemes),
+            ('K', SemanticAction::CopyKubectl),
+            ('P', SemanticAction::OpenPromptLeader),
+            ('E', SemanticAction::ExportDiagnostic),
+        ] {
+            assert_eq!(
+                k.resolve(KeyCode::Char(ch), KeyModifiers::SHIFT),
+                Some(expected),
+                "Shift+{ch} should still resolve when SHIFT bit is set",
+            );
+        }
+    }
+
+    #[test]
+    fn lowercase_chord_is_unaffected_by_shift_normalization() {
+        // SHIFT+lowercase shouldn't be coerced — that's a different
+        // chord and shouldn't hit a lowercase binding accidentally.
+        let k = Keymap::normal();
+        assert_eq!(
+            k.resolve(KeyCode::Char('d'), KeyModifiers::NONE),
+            Some(SemanticAction::Describe),
+        );
+        assert_eq!(
+            k.resolve(KeyCode::Char('d'), KeyModifiers::SHIFT),
+            None,
+            "shift+lowercase shouldn't match the lowercase binding",
+        );
+    }
+
+    #[test]
+    fn ctrl_modifier_is_preserved_on_uppercase_resolution() {
+        // The SHIFT-strip must not also eat CTRL.
+        let k = Keymap::normal();
+        // Ctrl+R is bound to ToggleReadOnly via Char('r').
+        // Make sure that's untouched by the upper-case branch (the
+        // code there is lowercase, so it'd never trigger — but
+        // double-check Ctrl+Shift+R still doesn't masquerade as
+        // Ctrl+R).
+        assert_eq!(
+            k.resolve(
+                KeyCode::Char('R'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            None,
+        );
     }
 }
