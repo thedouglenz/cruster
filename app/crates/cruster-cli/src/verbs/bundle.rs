@@ -60,9 +60,13 @@ pub async fn run(_cli: &Cli, args: &BundleArgs) -> anyhow::Result<()> {
 
     let bundle = match kind_plural {
         "pods" => build_pod_bundle(&client, name, args).await?,
-        "deployments" => build_namespaced_bundle::<Deployment>(&client, "Deployment", name, args).await?,
+        "deployments" => {
+            build_namespaced_bundle::<Deployment>(&client, "Deployment", name, args).await?
+        }
         "services" => build_namespaced_bundle::<Service>(&client, "Service", name, args).await?,
-        "configmaps" => build_namespaced_bundle::<ConfigMap>(&client, "ConfigMap", name, args).await?,
+        "configmaps" => {
+            build_namespaced_bundle::<ConfigMap>(&client, "ConfigMap", name, args).await?
+        }
         "secrets" => build_namespaced_bundle::<Secret>(&client, "Secret", name, args).await?,
         "namespaces" => build_cluster_bundle::<Namespace>(&client, "Namespace", name).await?,
         "nodes" => build_cluster_bundle::<Node>(&client, "Node", name).await?,
@@ -144,11 +148,7 @@ where
     })
 }
 
-async fn build_cluster_bundle<T>(
-    client: &Client,
-    kind: &str,
-    name: &str,
-) -> anyhow::Result<Bundle>
+async fn build_cluster_bundle<T>(client: &Client, kind: &str, name: &str) -> anyhow::Result<Bundle>
 where
     T: Resource<DynamicType = (), Scope = kube::core::ClusterResourceScope>
         + Clone
