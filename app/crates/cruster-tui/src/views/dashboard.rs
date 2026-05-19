@@ -17,7 +17,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::{MetricsCache, StoreRegistry};
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
+use k8s_openapi::api::core::v1::{Event, Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -38,6 +38,10 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const TILE_W: u16 = 24;
 const TILE_H: u16 = 6;
 const TILE_GUTTER_X: u16 = 1;
+/// Cap on how many events we cache for the dashboard events band.
+/// More than this and we waste sort work + buffer for rows nobody
+/// will ever see.
+const EVENTS_BUFFER_CAP: usize = 100;
 
 #[derive(Debug, Default, Clone)]
 struct Summary {
@@ -103,6 +107,10 @@ pub struct DashboardView {
     /// Set when a pin is unpinned via `x`; consumed by `App` to show a
     /// toast naming the unpinned resource.
     pending_unpin_toast: Option<String>,
+    /// Recent cluster events for the events band. Warnings sorted
+    /// first, then Normals; each group ordered by lastTimestamp desc.
+    /// Capped at `EVENTS_BUFFER_CAP` to bound render work.
+    events: Vec<(ResourceKey, Event)>,
     /// Unused on this view, but views must accept filters without
     /// crashing — keep the field so the trait method has somewhere to
     /// write.
@@ -122,6 +130,7 @@ impl Default for DashboardView {
             context_name: current_kubeconfig_context(),
             pending_switch_id: None,
             pending_unpin_toast: None,
+            events: Vec::new(),
             _filter: Filter::default(),
         }
     }
@@ -178,6 +187,7 @@ impl ResourceView for DashboardView {
         let events = registry.events.snapshot().await;
 
         self.summary = summarise(&pods, &deployments, &services, &nodes, &namespaces, &events);
+        self.events = sort_events_for_band(events.clone(), EVENTS_BUFFER_CAP);
         self.metrics = registry.node_metrics.read().await.clone();
 
         // Resolve each pin against the live snapshots.
@@ -217,26 +227,27 @@ impl ResourceView for DashboardView {
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        // Summary + trends get their requested fixed lengths; pins
-        // gets the remainder (down to a 2-row floor). The pin tile
-        // grid already auto-flows and shows a "+N more" hint when
-        // some tiles get clipped, so handing it the remainder rather
-        // than `Min(pins_h)` keeps the cluster-identity numbers and
-        // trends band from being squeezed on tall pin lists.
+        // Summary + trends + events claim fixed-ish lengths; pins
+        // absorbs the remainder. Events band is the bottom ~1/4 of
+        // the dashboard (floor 4 rows so it still reads on a small
+        // terminal). Pins gets squeezed before events does.
+        let events_h = events_band_height(area.height);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 // Summary band: top border + identity line + scale
                 // line + CPU bar + MEM bar + 1 padding = 6 rows.
                 Constraint::Length(6),
-                Constraint::Length(9), // trends band: top border + title + 6 chart rows + axis
-                Constraint::Min(2),
+                Constraint::Length(9), // trends band
+                Constraint::Min(2),    // pins band — absorbs leftover
+                Constraint::Length(events_h),
             ])
             .split(area);
 
         self.render_summary(frame, chunks[0], theme);
         self.render_trends(frame, chunks[1], theme);
         self.render_pins(frame, chunks[2], theme);
+        self.render_events(frame, chunks[3], theme);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> LoopState {
@@ -447,6 +458,80 @@ impl DashboardView {
     }
 
     /// Narrow-terminal fallback: one line per pin.
+    fn render_events(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
+        if area.height < 2 || area.width < 30 {
+            return;
+        }
+        let warn_count = self
+            .events
+            .iter()
+            .filter(|(_, e)| e.type_.as_deref() == Some("Warning"))
+            .count();
+        let normal_count = self.events.len() - warn_count;
+        let title = format!(" events · {warn_count} warnings · {normal_count} normal ");
+        let block = Block::default().borders(Borders::TOP).title(title);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        if self.events.is_empty() {
+            let placeholder = Paragraph::new("  no events")
+                .style(Style::default().fg(theme.muted_fg.as_ratatui()));
+            frame.render_widget(
+                placeholder,
+                Rect {
+                    x: inner.x,
+                    y: inner.y,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
+            return;
+        }
+
+        let muted_style = Style::default().fg(theme.muted_fg.as_ratatui());
+        let warning_style = super::unhealthy_row_style(theme);
+        for (i, (_, e)) in self.events.iter().enumerate() {
+            if i as u16 >= inner.height {
+                break;
+            }
+            let is_warning = e.type_.as_deref() == Some("Warning");
+            let glyph = if is_warning { "⚠" } else { "·" };
+            let age = event_age_for_band(e);
+            let reason = e.reason.clone().unwrap_or_default();
+            let object = event_object_for_band(e);
+            let message = e.message.clone().unwrap_or_default();
+            // Columns: " AGE(5) GLYPH(2) REASON(16) OBJECT(24) MESSAGE(rest)".
+            // Manually space so we can truncate the message to fit.
+            let prefix = format!(
+                " {:<5} {:<2} {:<16} {:<24} ",
+                truncate(&age, 5),
+                glyph,
+                truncate(&reason, 16),
+                truncate(&object, 24),
+            );
+            let prefix_w = prefix.chars().count() as u16;
+            let msg_w = inner.width.saturating_sub(prefix_w);
+            let msg = truncate(&message, msg_w as usize);
+            let line = format!("{prefix}{msg}");
+            let style = if is_warning {
+                warning_style
+            } else {
+                muted_style
+            };
+            // Wrap in a Span so the style sticks to every cell, not
+            // just the Paragraph background.
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(line, style))),
+                Rect {
+                    x: inner.x,
+                    y: inner.y + i as u16,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
+        }
+    }
+
     fn render_pins_compact(&self, frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
         if inner.height == 0 {
             return;
@@ -1411,6 +1496,80 @@ fn node_is_ready(node: &Node) -> bool {
         .unwrap_or(false)
 }
 
+/// `last_timestamp` rendered the same way the `:events` view does
+/// it. Falls back to "?" when the event has no timestamp.
+fn event_age_for_band(e: &k8s_openapi::api::core::v1::Event) -> String {
+    let ts = e
+        .last_timestamp
+        .as_ref()
+        .map(|t| t.0)
+        .or_else(|| e.event_time.as_ref().map(|t| t.0));
+    match ts {
+        Some(t) => crate::views::events::human_age(t),
+        None => "?".into(),
+    }
+}
+
+fn event_object_for_band(e: &k8s_openapi::api::core::v1::Event) -> String {
+    let kind = e.involved_object.kind.as_deref().unwrap_or("?");
+    match &e.involved_object.name {
+        Some(n) => format!("{kind}/{n}"),
+        None => "-".into(),
+    }
+}
+
+/// Truncate `s` to at most `max_chars` graphemes, suffixing `…` when
+/// the original didn't fit. `max_chars == 0` returns an empty string.
+fn truncate(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    if max_chars == 1 {
+        return "…".into();
+    }
+    let mut out: String = s.chars().take(max_chars - 1).collect();
+    out.push('…');
+    out
+}
+
+/// Vertical-row budget for the dashboard's events band. Aims at
+/// ~1/4 of total height with a 4-row floor so the band still has
+/// a header plus 2-3 rows on a tiny terminal. The other bands
+/// (summary, trends, pins) absorb the remainder; pins is the one
+/// that shrinks first because it already auto-flows.
+pub(crate) fn events_band_height(total_height: u16) -> u16 {
+    (total_height / 4).max(4)
+}
+
+/// Sort events for the dashboard events band: Warnings first, then
+/// Normals; within each group, newest `lastTimestamp` wins. Caps
+/// the output at `cap` so an event-noisy cluster doesn't blow up
+/// render work for rows nobody will see.
+fn sort_events_for_band(
+    mut events: Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)>,
+    cap: usize,
+) -> Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)> {
+    fn is_warning(e: &k8s_openapi::api::core::v1::Event) -> bool {
+        e.type_.as_deref() == Some("Warning")
+    }
+    events.sort_by(|a, b| {
+        let aw = is_warning(&a.1);
+        let bw = is_warning(&b.1);
+        // Warnings (true) before Normals (false).
+        bw.cmp(&aw).then_with(|| {
+            let at = a.1.last_timestamp.as_ref().map(|t| t.0);
+            let bt = b.1.last_timestamp.as_ref().map(|t| t.0);
+            bt.cmp(&at)
+        })
+    });
+    events.truncate(cap);
+    events
+}
+
 fn events_in_last_60s(events: &[(ResourceKey, k8s_openapi::api::core::v1::Event)]) -> u64 {
     let cutoff = chrono::Utc::now() - chrono::Duration::seconds(60);
     events
@@ -1473,6 +1632,175 @@ mod tests {
     use super::*;
     use cruster_kube::StoreRegistry;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+    fn make_event(
+        ns: &str,
+        name: &str,
+        type_: &str,
+        secs_ago: i64,
+    ) -> (ResourceKey, k8s_openapi::api::core::v1::Event) {
+        let ts = chrono::Utc::now() - chrono::Duration::seconds(secs_ago);
+        let e = k8s_openapi::api::core::v1::Event {
+            metadata: ObjectMeta {
+                name: Some(name.into()),
+                namespace: Some(ns.into()),
+                ..Default::default()
+            },
+            type_: Some(type_.into()),
+            last_timestamp: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(ts)),
+            ..Default::default()
+        };
+        (ResourceKey::namespaced("Event", ns, name), e)
+    }
+
+    #[test]
+    fn sort_events_for_band_warnings_first_then_recency() {
+        let events = vec![
+            make_event("default", "old-normal", "Normal", 5),
+            make_event("default", "old-warning", "Warning", 100),
+            make_event("default", "new-normal", "Normal", 1),
+            make_event("default", "new-warning", "Warning", 2),
+        ];
+        let sorted = sort_events_for_band(events, 10);
+        let names: Vec<&str> = sorted
+            .iter()
+            .map(|(_, e)| e.metadata.name.as_deref().unwrap_or(""))
+            .collect();
+        // Warnings first (recency within group), then Normals (recency within group).
+        assert_eq!(
+            names,
+            vec!["new-warning", "old-warning", "new-normal", "old-normal"]
+        );
+    }
+
+    #[test]
+    fn sort_events_for_band_caps_output() {
+        let events: Vec<_> = (0..200)
+            .map(|i| make_event("default", &format!("e{i}"), "Normal", i))
+            .collect();
+        let sorted = sort_events_for_band(events, 25);
+        assert_eq!(sorted.len(), 25);
+    }
+
+    #[test]
+    fn events_band_height_is_quarter_with_floor_of_4() {
+        assert_eq!(events_band_height(40), 10); // 40 / 4 = 10
+        assert_eq!(events_band_height(20), 5); // 20 / 4 = 5
+        assert_eq!(events_band_height(12), 4); // 12 / 4 = 3 -> floor 4
+        assert_eq!(events_band_height(8), 4); // 8 / 4 = 2 -> floor 4
+        assert_eq!(events_band_height(0), 4); // 0 / 4 = 0 -> floor 4
+    }
+
+    #[test]
+    fn truncate_handles_overflow_and_empty() {
+        assert_eq!(truncate("hello world", 5), "hell…");
+        assert_eq!(truncate("hi", 5), "hi");
+        assert_eq!(truncate("hi", 1), "…");
+        assert_eq!(truncate("hi", 0), "");
+    }
+
+    fn dashboard_with_events(
+        events: Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)>,
+    ) -> DashboardView {
+        let mut v = DashboardView::new();
+        v.events = sort_events_for_band(events, EVENTS_BUFFER_CAP);
+        v
+    }
+
+    #[test]
+    fn render_events_warning_row_uses_status_failed_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut e = make_event("default", "evt", "Warning", 5);
+        e.1.reason = Some("FailedScheduling".into());
+        e.1.involved_object.kind = Some("Pod".into());
+        e.1.involved_object.name = Some("api".into());
+        e.1.message = Some("0/3 nodes available".into());
+        let v = dashboard_with_events(vec![e]);
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Find the ⚠ glyph cell — that row must carry the failed fg.
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "⚠" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ⚠ glyph in rendered buffer");
+    }
+
+    #[test]
+    fn render_events_normal_row_uses_muted_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut e = make_event("default", "evt", "Normal", 5);
+        e.1.reason = Some("Pulled".into());
+        e.1.involved_object.kind = Some("Pod".into());
+        e.1.involved_object.name = Some("api".into());
+        e.1.message = Some("Successfully pulled".into());
+        let v = dashboard_with_events(vec![e]);
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.muted_fg.as_ratatui();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Skip row 0 — that's the Block's top border + title, which
+        // ALSO contains "·" characters (in the title chip text) and
+        // would falsely match the styled-row search.
+        let mut found = false;
+        for y in 1..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "·" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected · glyph on an event row");
+    }
+
+    #[test]
+    fn render_events_empty_shows_no_events_placeholder() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let v = DashboardView::new();
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row_text = String::new();
+        for y in 0..buf.area().height {
+            let line: String = (0..buf.area().width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect();
+            row_text.push_str(&line);
+            row_text.push('\n');
+        }
+        assert!(row_text.contains("no events"), "buffer: {row_text}");
+    }
 
     fn make_pod(ns: &str, name: &str, phase: &str) -> (ResourceKey, Pod) {
         let pod = Pod {
