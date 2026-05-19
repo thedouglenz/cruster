@@ -17,7 +17,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use cruster_core::ResourceKey;
 use cruster_kube::{MetricsCache, StoreRegistry};
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
+use k8s_openapi::api::core::v1::{Event, Namespace, Node, Pod, Service};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -38,6 +38,10 @@ const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const TILE_W: u16 = 24;
 const TILE_H: u16 = 6;
 const TILE_GUTTER_X: u16 = 1;
+/// Cap on how many events we cache for the dashboard events band.
+/// More than this and we waste sort work + buffer for rows nobody
+/// will ever see.
+const EVENTS_BUFFER_CAP: usize = 100;
 
 #[derive(Debug, Default, Clone)]
 struct Summary {
@@ -103,6 +107,10 @@ pub struct DashboardView {
     /// Set when a pin is unpinned via `x`; consumed by `App` to show a
     /// toast naming the unpinned resource.
     pending_unpin_toast: Option<String>,
+    /// Recent cluster events for the events band. Warnings sorted
+    /// first, then Normals; each group ordered by lastTimestamp desc.
+    /// Capped at `EVENTS_BUFFER_CAP` to bound render work.
+    events: Vec<(ResourceKey, Event)>,
     /// Unused on this view, but views must accept filters without
     /// crashing — keep the field so the trait method has somewhere to
     /// write.
@@ -122,6 +130,7 @@ impl Default for DashboardView {
             context_name: current_kubeconfig_context(),
             pending_switch_id: None,
             pending_unpin_toast: None,
+            events: Vec::new(),
             _filter: Filter::default(),
         }
     }
@@ -178,6 +187,7 @@ impl ResourceView for DashboardView {
         let events = registry.events.snapshot().await;
 
         self.summary = summarise(&pods, &deployments, &services, &nodes, &namespaces, &events);
+        self.events = sort_events_for_band(events.clone(), EVENTS_BUFFER_CAP);
         self.metrics = registry.node_metrics.read().await.clone();
 
         // Resolve each pin against the live snapshots.
@@ -1411,6 +1421,32 @@ fn node_is_ready(node: &Node) -> bool {
         .unwrap_or(false)
 }
 
+/// Sort events for the dashboard events band: Warnings first, then
+/// Normals; within each group, newest `lastTimestamp` wins. Caps
+/// the output at `cap` so an event-noisy cluster doesn't blow up
+/// render work for rows nobody will see.
+fn sort_events_for_band(
+    mut events: Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)>,
+    cap: usize,
+) -> Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)> {
+    fn is_warning(e: &k8s_openapi::api::core::v1::Event) -> bool {
+        e.type_.as_deref() == Some("Warning")
+    }
+    events.sort_by(|a, b| {
+        let aw = is_warning(&a.1);
+        let bw = is_warning(&b.1);
+        // Warnings (true) before Normals (false).
+        bw.cmp(&aw)
+            .then_with(|| {
+                let at = a.1.last_timestamp.as_ref().map(|t| t.0);
+                let bt = b.1.last_timestamp.as_ref().map(|t| t.0);
+                bt.cmp(&at)
+            })
+    });
+    events.truncate(cap);
+    events
+}
+
 fn events_in_last_60s(events: &[(ResourceKey, k8s_openapi::api::core::v1::Event)]) -> u64 {
     let cutoff = chrono::Utc::now() - chrono::Duration::seconds(60);
     events
@@ -1473,6 +1509,55 @@ mod tests {
     use super::*;
     use cruster_kube::StoreRegistry;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+    fn make_event(
+        ns: &str,
+        name: &str,
+        type_: &str,
+        secs_ago: i64,
+    ) -> (ResourceKey, k8s_openapi::api::core::v1::Event) {
+        let ts = chrono::Utc::now() - chrono::Duration::seconds(secs_ago);
+        let e = k8s_openapi::api::core::v1::Event {
+            metadata: ObjectMeta {
+                name: Some(name.into()),
+                namespace: Some(ns.into()),
+                ..Default::default()
+            },
+            type_: Some(type_.into()),
+            last_timestamp: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(ts)),
+            ..Default::default()
+        };
+        (ResourceKey::namespaced("Event", ns, name), e)
+    }
+
+    #[test]
+    fn sort_events_for_band_warnings_first_then_recency() {
+        let events = vec![
+            make_event("default", "old-normal", "Normal", 5),
+            make_event("default", "old-warning", "Warning", 100),
+            make_event("default", "new-normal", "Normal", 1),
+            make_event("default", "new-warning", "Warning", 2),
+        ];
+        let sorted = sort_events_for_band(events, 10);
+        let names: Vec<&str> = sorted
+            .iter()
+            .map(|(_, e)| e.metadata.name.as_deref().unwrap_or(""))
+            .collect();
+        // Warnings first (recency within group), then Normals (recency within group).
+        assert_eq!(
+            names,
+            vec!["new-warning", "old-warning", "new-normal", "old-normal"]
+        );
+    }
+
+    #[test]
+    fn sort_events_for_band_caps_output() {
+        let events: Vec<_> = (0..200)
+            .map(|i| make_event("default", &format!("e{i}"), "Normal", i))
+            .collect();
+        let sorted = sort_events_for_band(events, 25);
+        assert_eq!(sorted.len(), 25);
+    }
 
     fn make_pod(ns: &str, name: &str, phase: &str) -> (ResourceKey, Pod) {
         let pod = Pod {
