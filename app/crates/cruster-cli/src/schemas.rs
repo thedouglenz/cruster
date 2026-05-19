@@ -94,6 +94,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 17);
+        assert_eq!(SCHEMAS.len(), 18);
     }
 }
