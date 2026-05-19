@@ -677,17 +677,20 @@ impl App {
             return LoopState::Continue;
         }
 
-        // Route to focused pane (if focus is a pane and it's open).
-        match self.pane_focus {
+        // Route to focused pane first. The pane returns `true` if it
+        // consumed the key (Esc / scroll chords / grep typing); if it
+        // returns `false`, the chord falls through to the keymap so
+        // global commands like `D` (delete) and `?` (help) still
+        // fire while a side pane is in focus.
+        let consumed_by_pane = match self.pane_focus {
             PaneFocus::Describe if self.describe_pane.is_open() => {
-                self.describe_pane.handle_key(key);
-                return LoopState::Continue;
+                self.describe_pane.handle_key(key)
             }
-            PaneFocus::Logs if self.logs_pane.is_open() => {
-                self.logs_pane.handle_key(key);
-                return LoopState::Continue;
-            }
-            _ => {}
+            PaneFocus::Logs if self.logs_pane.is_open() => self.logs_pane.handle_key(key),
+            _ => false,
+        };
+        if consumed_by_pane {
+            return LoopState::Continue;
         }
 
         if self.command.is_active() {
@@ -1419,15 +1422,20 @@ mod tests {
     }
 
     #[test]
-    fn describe_pane_swallows_keys_when_focused() {
+    fn describe_pane_q_and_esc_close_pane_without_quitting_app() {
         let mut a = app();
         a.describe_pane.open("test", "yaml");
         a.pane_focus = PaneFocus::Describe;
-        // 'q' should not quit when describe pane is focused
+        // 'q' from inside the pane closes the pane rather than
+        // quitting the whole app — matches Esc and avoids the
+        // accidental-exit footgun.
         assert_eq!(a.handle_key(press(KeyCode::Char('q'))), LoopState::Continue);
-        // Esc closes the pane
+        assert!(!a.describe_pane.is_open(), "q should close the pane");
+
+        a.describe_pane.open("test", "yaml");
+        a.pane_focus = PaneFocus::Describe;
         let _ = a.handle_key(press(KeyCode::Esc));
-        assert!(!a.describe_pane.is_open());
+        assert!(!a.describe_pane.is_open(), "Esc should close the pane");
     }
 
     #[test]
@@ -1755,5 +1763,57 @@ mod tests {
         let mut a = app();
         let _ = a.handle_key(press(KeyCode::Char('?')));
         assert!(a.overlay.is_some(), "? should open an overlay (help)");
+    }
+
+    /// Regression: pressing `D` with the describe pane focused used
+    /// to silently no-op because describe_pane.handle_key swallowed
+    /// every key while open. Global semantic actions should now
+    /// reach the keymap dispatch regardless of pane focus.
+    #[test]
+    fn capital_d_opens_delete_overlay_even_when_describe_pane_focused() {
+        let mut a = app();
+        a.read_only = false;
+        a.switch_to_view_id("pods");
+        // Force a selection so start_delete_prompt opens the overlay.
+        a.current_view
+            .as_mut()
+            .unwrap()
+            .handle_key(press(KeyCode::Char('j')));
+        // Simulate the describe pane being open + focused (as it
+        // would be right after the user pressed `d`).
+        a.describe_pane.open("test", "yaml: contents");
+        a.pane_focus = PaneFocus::Describe;
+        let _ = a.handle_key(press(KeyCode::Char('D')));
+        // We don't require an overlay to exist (no real selection in
+        // the empty test store) — the contract is that D was NOT
+        // swallowed by the describe pane. A toast OR an overlay both
+        // prove dispatch reached start_delete_prompt.
+        let dispatched = a.overlay.is_some()
+            || a.toast
+                .as_deref()
+                .map(|t| t.contains("nothing selected") || t.contains("read-only"))
+                .unwrap_or(false);
+        assert!(
+            dispatched,
+            "D should dispatch globally even with describe pane focused; toast={:?}",
+            a.toast,
+        );
+    }
+
+    /// Navigation chords (j/k/g/G) still flow to a focused side pane
+    /// so the user can scroll an open describe / logs view.
+    #[test]
+    fn j_still_scrolls_describe_pane_when_focused() {
+        let mut a = app();
+        a.describe_pane.open("test", "line1\nline2\nline3");
+        a.pane_focus = PaneFocus::Describe;
+        let scroll_before = a.describe_pane.scroll_for_test();
+        let _ = a.handle_key(press(KeyCode::Char('j')));
+        let scroll_after = a.describe_pane.scroll_for_test();
+        assert_eq!(
+            scroll_after,
+            scroll_before + 1,
+            "j should still scroll the focused describe pane",
+        );
     }
 }

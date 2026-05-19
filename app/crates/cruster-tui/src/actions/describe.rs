@@ -23,6 +23,11 @@ impl DescribePane {
         self.open
     }
 
+    #[cfg(test)]
+    pub fn scroll_for_test(&self) -> u16 {
+        self.scroll
+    }
+
     pub fn open(&mut self, title: impl Into<String>, content: impl Into<String>) {
         self.title = title.into();
         self.content = content.into();
@@ -43,7 +48,7 @@ impl DescribePane {
             return false;
         }
         match key.code {
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('q') => {
                 self.close();
                 true
             }
@@ -63,7 +68,10 @@ impl DescribePane {
                 self.scroll = self.scroll.saturating_sub(10);
                 true
             }
-            _ => true, // swallow other keys while open
+            // Unknown keys fall through to the keymap so global
+            // commands (D, ?, palette, …) keep working when the
+            // describe pane has focus.
+            _ => false,
         }
     }
 
