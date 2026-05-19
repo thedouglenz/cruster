@@ -212,6 +212,7 @@ impl HelpOverlay {
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.overlay_border.as_ratatui()))
             .title(" Cruster keys ")
             .title_style(Style::default().add_modifier(Modifier::BOLD));
         let inner = block.inner(rect);
@@ -384,6 +385,32 @@ mod tests {
             o.handle_key(press(KeyCode::Char('j'))),
             OverlayResult::KeepOpen
         );
+    }
+
+    #[test]
+    fn render_border_uses_theme_overlay_border() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let o = HelpOverlay::new(Keymap::normal());
+        let theme = crate::theme::Theme::terminal_default();
+        let want = theme.overlay_border.as_ratatui();
+        let backend = TestBackend::new(80, 32);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| o.render_with_theme(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "┌" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ┌ corner glyph in rendered buffer");
     }
 
     #[test]

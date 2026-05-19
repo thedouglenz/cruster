@@ -7,6 +7,7 @@ selected_bg = "darkgray"
 selection_fg = "cyan"
 header_fg = "darkgray"
 muted_fg = "darkgray"
+overlay_border = "lightcyan"
 
 # Env band is the most safety-critical badge — never let it be invisible.
 [env_band]

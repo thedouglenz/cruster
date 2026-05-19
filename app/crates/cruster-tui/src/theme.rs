@@ -24,6 +24,12 @@ pub struct Theme {
     pub header_fg: ThemeColor,
     #[serde(default = "default_muted_fg")]
     pub muted_fg: ThemeColor,
+    /// Border color for modal overlays (delete, help, port-forward,
+    /// palette, relationships, search). Defaults to a bright cyan
+    /// so modals pop off the background regardless of terminal
+    /// palette tuning.
+    #[serde(default = "default_overlay_border")]
+    pub overlay_border: ThemeColor,
     #[serde(default)]
     pub env_band: EnvBand,
     #[serde(default)]
@@ -298,6 +304,9 @@ fn default_header_fg() -> ThemeColor {
 fn default_muted_fg() -> ThemeColor {
     ThemeColor::Named("darkgray".into())
 }
+fn default_overlay_border() -> ThemeColor {
+    ThemeColor::Named("lightcyan".into())
+}
 fn default_status_running() -> ThemeColor {
     ThemeColor::Named("green".into())
 }
@@ -431,5 +440,20 @@ mod tests {
         assert_eq!(t.env_band_fg.dev.as_ratatui(), Color::Black);
         assert_eq!(t.env_band_fg.local.as_ratatui(), Color::Black);
         assert_eq!(t.env_band_fg.unknown.as_ratatui(), Color::White);
+    }
+
+    #[test]
+    fn overlay_border_defaults_to_lightcyan_in_terminal_theme() {
+        let t = Theme::terminal_default();
+        assert_eq!(t.overlay_border.as_ratatui(), Color::LightCyan);
+    }
+
+    #[test]
+    fn overlay_border_falls_back_to_default_when_toml_omits_key() {
+        // Back-compat: a minimal TOML without `overlay_border` still
+        // parses, and the missing key falls through to the default.
+        let body = r#"name = "minimal""#;
+        let t: Theme = toml::from_str(body).unwrap();
+        assert_eq!(t.overlay_border.as_ratatui(), Color::LightCyan);
     }
 }
