@@ -6,7 +6,7 @@
 
 use std::io::Write;
 
-use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::{Api, Client};
 use serde::Serialize;
@@ -23,6 +23,8 @@ pub fn canonicalise_kind(raw: &str) -> Option<&'static str> {
     match raw {
         "po" | "pod" | "pods" => Some("pods"),
         "deploy" | "deployment" | "deployments" => Some("deployments"),
+        "sts" | "statefulset" | "statefulsets" => Some("statefulsets"),
+        "ds" | "daemonset" | "daemonsets" => Some("daemonsets"),
         "svc" | "service" | "services" => Some("services"),
         "no" | "node" | "nodes" => Some("nodes"),
         "ev" | "event" | "events" => Some("events"),
@@ -39,6 +41,10 @@ pub async fn run(cli: &Cli, args: &GetArgs) -> anyhow::Result<()> {
     match kind {
         "pods" => run_namespaced::<Pod, _>(cli, args, write_pods_text).await,
         "deployments" => run_namespaced::<Deployment, _>(cli, args, write_deployments_text).await,
+        "statefulsets" => {
+            run_namespaced::<StatefulSet, _>(cli, args, write_statefulsets_text).await
+        }
+        "daemonsets" => run_namespaced::<DaemonSet, _>(cli, args, write_daemonsets_text).await,
         "services" => run_namespaced::<Service, _>(cli, args, write_services_text).await,
         "nodes" => run_cluster::<Node, _>(cli, args, write_nodes_text).await,
         "events" => run_namespaced::<Event, _>(cli, args, write_events_text).await,
@@ -212,6 +218,64 @@ fn write_deployments_text(out: &mut dyn Write, deps: &[Deployment]) -> std::io::
         writeln!(
             out,
             "{ns}\t{name}\t{ready}/{desired}\t{updated}\t{available}"
+        )?;
+    }
+    Ok(())
+}
+
+fn write_statefulsets_text(out: &mut dyn Write, stss: &[StatefulSet]) -> std::io::Result<()> {
+    writeln!(out, "NAMESPACE\tNAME\tREADY\tAGE")?;
+    for s in stss {
+        let ns = s.metadata.namespace.as_deref().unwrap_or("-");
+        let name = s.metadata.name.as_deref().unwrap_or("?");
+        let desired = s.spec.as_ref().and_then(|sp| sp.replicas).unwrap_or(0);
+        let ready = s
+            .status
+            .as_ref()
+            .and_then(|st| st.ready_replicas)
+            .unwrap_or(0);
+        writeln!(
+            out,
+            "{ns}\t{name}\t{ready}/{desired}\t{}",
+            metadata_age(&s.metadata)
+        )?;
+    }
+    Ok(())
+}
+
+fn write_daemonsets_text(out: &mut dyn Write, dss: &[DaemonSet]) -> std::io::Result<()> {
+    writeln!(
+        out,
+        "NAMESPACE\tNAME\tDESIRED\tCURRENT\tREADY\tUP-TO-DATE\tAVAILABLE\tAGE"
+    )?;
+    for d in dss {
+        let ns = d.metadata.namespace.as_deref().unwrap_or("-");
+        let name = d.metadata.name.as_deref().unwrap_or("?");
+        let desired = d
+            .status
+            .as_ref()
+            .map(|s| s.desired_number_scheduled)
+            .unwrap_or(0);
+        let current = d
+            .status
+            .as_ref()
+            .map(|s| s.current_number_scheduled)
+            .unwrap_or(0);
+        let ready = d.status.as_ref().map(|s| s.number_ready).unwrap_or(0);
+        let updated = d
+            .status
+            .as_ref()
+            .and_then(|s| s.updated_number_scheduled)
+            .unwrap_or(0);
+        let available = d
+            .status
+            .as_ref()
+            .and_then(|s| s.number_available)
+            .unwrap_or(0);
+        writeln!(
+            out,
+            "{ns}\t{name}\t{desired}\t{current}\t{ready}\t{updated}\t{available}\t{}",
+            metadata_age(&d.metadata)
         )?;
     }
     Ok(())
@@ -451,11 +515,27 @@ mod tests {
     fn canonicalise_handles_all_kinds() {
         assert_eq!(canonicalise_kind("pods"), Some("pods"));
         assert_eq!(canonicalise_kind("deployments"), Some("deployments"));
+        assert_eq!(canonicalise_kind("statefulsets"), Some("statefulsets"));
+        assert_eq!(canonicalise_kind("daemonsets"), Some("daemonsets"));
         assert_eq!(canonicalise_kind("services"), Some("services"));
         assert_eq!(canonicalise_kind("nodes"), Some("nodes"));
         assert_eq!(canonicalise_kind("events"), Some("events"));
         assert_eq!(canonicalise_kind("configmaps"), Some("configmaps"));
         assert_eq!(canonicalise_kind("secrets"), Some("secrets"));
         assert_eq!(canonicalise_kind("namespaces"), Some("namespaces"));
+    }
+
+    #[test]
+    fn get_sts_alias_resolves_to_statefulsets() {
+        assert_eq!(canonicalise_kind("sts"), Some("statefulsets"));
+        assert_eq!(canonicalise_kind("statefulset"), Some("statefulsets"));
+        assert_eq!(canonicalise_kind("statefulsets"), Some("statefulsets"));
+    }
+
+    #[test]
+    fn get_ds_alias_resolves_to_daemonsets() {
+        assert_eq!(canonicalise_kind("ds"), Some("daemonsets"));
+        assert_eq!(canonicalise_kind("daemonset"), Some("daemonsets"));
+        assert_eq!(canonicalise_kind("daemonsets"), Some("daemonsets"));
     }
 }

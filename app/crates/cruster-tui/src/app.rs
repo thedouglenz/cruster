@@ -31,6 +31,7 @@ use crate::overlays::search::{Filter, SearchPrompt};
 use crate::prompts::PromptDef;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
+use crate::views::daemonsets::DaemonSetsView;
 use crate::views::dashboard::DashboardView;
 use crate::views::deployments::DeploymentsView;
 use crate::views::events::EventsView;
@@ -39,6 +40,7 @@ use crate::views::nodes::NodesView;
 use crate::views::pods::PodsView;
 use crate::views::secrets::SecretsView;
 use crate::views::services::ServicesView;
+use crate::views::statefulsets::StatefulSetsView;
 use cruster_core::ResourceKey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -469,6 +471,8 @@ impl App {
             "dashboard",
             "pods",
             "deployments",
+            "statefulsets",
+            "daemonsets",
             "services",
             "nodes",
             "events",
@@ -584,6 +588,8 @@ impl App {
             "dashboard" => return None,
             "pods" => Box::new(PodsView::new()),
             "deployments" => Box::new(DeploymentsView::new()),
+            "statefulsets" => Box::new(StatefulSetsView::new()),
+            "daemonsets" => Box::new(DaemonSetsView::new()),
             "services" => Box::new(ServicesView::new()),
             "nodes" => Box::new(NodesView::new()),
             "events" => Box::new(EventsView::new()),
