@@ -554,4 +554,22 @@ mod tests {
         view.refresh(&registry).await;
         assert_eq!(view.selected, 0);
     }
+
+    #[test]
+    fn every_bundled_theme_renders_pods_view_without_panic() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, p) = make_pod_entry("default", "nginx");
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        for name in crate::theme::Theme::bundled_names() {
+            let theme = crate::theme::Theme::embedded(name)
+                .unwrap_or_else(|| panic!("bundled theme {name:?} should load"));
+            let backend = TestBackend::new(120, 10);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        }
+    }
 }
