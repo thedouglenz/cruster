@@ -60,12 +60,14 @@ impl ResourceView for DeploymentsView {
             .map(|(i, (key, dep))| {
                 let ns = key.namespace.as_deref().unwrap_or("-");
                 let (ready, desired) = ready_desired(dep);
+                let ready_str = format!("{ready}/{desired}");
+                let ready_style = super::ready_cell_style(&ready_str, theme);
                 let marker = if i == self.selected { "▎" } else { " " };
                 let row = Row::new(vec![
                     Cell::from(marker),
                     Cell::from(ns.to_string()),
                     Cell::from(key.name.clone()),
-                    Cell::from(format!("{ready}/{desired}")),
+                    Cell::from(ready_str).style(ready_style),
                     Cell::from(updated_replicas(dep).to_string()),
                     Cell::from(available_replicas(dep).to_string()),
                 ]);
@@ -225,6 +227,73 @@ mod tests {
             }
         }
         assert!(found);
+    }
+
+    #[test]
+    fn render_ready_cell_is_failed_red_when_zero_ready_replicas() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = DeploymentsView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("Deployment", "default", "broken"),
+            make_dep("default", "broken", 0, 3),
+        )];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(2) {
+                if buf[(x, y)].symbol() == "0"
+                    && buf[(x + 1, y)].symbol() == "/"
+                    && buf[(x + 2, y)].symbol() == "3"
+                {
+                    let style = buf[(x, y)].style();
+                    assert_eq!(style.fg, Some(want_fg));
+                    assert!(style.add_modifier.contains(ratatui::style::Modifier::BOLD));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected '0/3' in rendered buffer");
+    }
+
+    #[test]
+    fn render_ready_cell_is_unstyled_when_fully_ready() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = DeploymentsView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("Deployment", "default", "ok"),
+            make_dep("default", "ok", 3, 3),
+        )];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(2) {
+                if buf[(x, y)].symbol() == "3"
+                    && buf[(x + 1, y)].symbol() == "/"
+                    && buf[(x + 2, y)].symbol() == "3"
+                {
+                    assert_ne!(buf[(x, y)].style().fg, Some(want_fg));
+                }
+            }
+        }
     }
 
     #[tokio::test]
