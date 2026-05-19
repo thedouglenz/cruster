@@ -17,6 +17,14 @@ This repository is a monorepo:
 
 ## Status
 
+**Phase 6C.** Modal UX parity with k9s. Press `D` on any selected
+resource to open a confirm modal with cascade-propagation choice
+(Background / Foreground / Orphan) and a Force toggle
+(`--grace-period=0 --force`). Press `?` from anywhere to open a
+full keybind cheat sheet grouped by category — chord rendering
+follows the active keymap preset, so vim / normal / emacs users
+each see their own bindings. Closes #15, #21.
+
 **Phase 6A.** Pulse dashboard is now the default launch view —
 cluster stats + trend sparklines + a curated panel of user-pinned
 services. Press `a` from any list view to pin the selected
