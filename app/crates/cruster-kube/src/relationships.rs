@@ -42,6 +42,8 @@ pub async fn related(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related
     match key.kind.as_str() {
         "Pod" => related_for_pod(key, registry).await,
         "Deployment" => related_for_deployment(key, registry).await,
+        "StatefulSet" => related_for_statefulset(key, registry).await,
+        "DaemonSet" => related_for_daemonset(key, registry).await,
         "Service" => related_for_service(key, registry).await,
         "Node" => related_for_node(key, registry).await,
         _ => Vec::new(),
@@ -133,6 +135,48 @@ async fn related_for_deployment(key: &ResourceKey, registry: &StoreRegistry) -> 
         }
         for o in pod.metadata.owner_references.iter().flatten() {
             if o.kind == "ReplicaSet" && o.name.starts_with(&format!("{}-", key.name)) {
+                out.push(Related {
+                    kind: RelationKind::OwnedBy,
+                    key: pkey.clone(),
+                });
+                break;
+            }
+        }
+    }
+    out
+}
+
+async fn related_for_statefulset(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related> {
+    let mut out = Vec::new();
+    let pods = registry.pods.snapshot().await;
+    let ns = key.namespace.as_deref().unwrap_or("default");
+    for (pkey, pod) in pods.iter() {
+        if pkey.namespace.as_deref() != Some(ns) {
+            continue;
+        }
+        for o in pod.metadata.owner_references.iter().flatten() {
+            if o.kind == "StatefulSet" && o.name == key.name {
+                out.push(Related {
+                    kind: RelationKind::OwnedBy,
+                    key: pkey.clone(),
+                });
+                break;
+            }
+        }
+    }
+    out
+}
+
+async fn related_for_daemonset(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related> {
+    let mut out = Vec::new();
+    let pods = registry.pods.snapshot().await;
+    let ns = key.namespace.as_deref().unwrap_or("default");
+    for (pkey, pod) in pods.iter() {
+        if pkey.namespace.as_deref() != Some(ns) {
+            continue;
+        }
+        for o in pod.metadata.owner_references.iter().flatten() {
+            if o.kind == "DaemonSet" && o.name == key.name {
                 out.push(Related {
                     kind: RelationKind::OwnedBy,
                     key: pkey.clone(),
@@ -283,5 +327,52 @@ mod tests {
         let rels = related(&ResourceKey::cluster_scoped("Node", "n1"), &r).await;
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].key.name, "p1");
+    }
+
+    #[tokio::test]
+    async fn statefulset_owned_pods_returned_for_matching_owner_ref() {
+        let r = StoreRegistry::new();
+        let mut pod = pod_with_labels("pg-0", "default", &[]);
+        pod.metadata.owner_references = Some(vec![OwnerReference {
+            kind: "StatefulSet".into(),
+            name: "pg".into(),
+            api_version: "apps/v1".into(),
+            uid: "sts-xxx".into(),
+            ..Default::default()
+        }]);
+        r.pods
+            .upsert(ResourceKey::namespaced("Pod", "default", "pg-0"), pod)
+            .await;
+        let rels = related(&ResourceKey::namespaced("StatefulSet", "default", "pg"), &r).await;
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].kind, RelationKind::OwnedBy);
+        assert_eq!(rels[0].key.name, "pg-0");
+    }
+
+    #[tokio::test]
+    async fn daemonset_owned_pods_returned_for_matching_owner_ref() {
+        let r = StoreRegistry::new();
+        let mut pod = pod_with_labels("fluentd-abc", "kube-system", &[]);
+        pod.metadata.owner_references = Some(vec![OwnerReference {
+            kind: "DaemonSet".into(),
+            name: "fluentd".into(),
+            api_version: "apps/v1".into(),
+            uid: "ds-xxx".into(),
+            ..Default::default()
+        }]);
+        r.pods
+            .upsert(
+                ResourceKey::namespaced("Pod", "kube-system", "fluentd-abc"),
+                pod,
+            )
+            .await;
+        let rels = related(
+            &ResourceKey::namespaced("DaemonSet", "kube-system", "fluentd"),
+            &r,
+        )
+        .await;
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].kind, RelationKind::OwnedBy);
+        assert_eq!(rels[0].key.name, "fluentd-abc");
     }
 }

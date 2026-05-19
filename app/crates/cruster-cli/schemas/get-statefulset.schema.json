@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://cruster.dev/schemas/get-statefulset/v1.json",
+  "title": "cruster get statefulset (NDJSON record)",
+  "description": "One record per statefulset. Default mode emits pruned k8s objects.",
+  "type": "object",
+  "required": ["metadata"]
+}

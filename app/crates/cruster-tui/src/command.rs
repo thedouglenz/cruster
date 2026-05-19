@@ -90,6 +90,8 @@ pub fn resolve_alias(alias: &str) -> Option<&'static str> {
         "dash" | "dashboard" | "pulse" => Some("dashboard"),
         "po" | "pod" | "pods" => Some("pods"),
         "deploy" | "deployment" | "deployments" => Some("deployments"),
+        "sts" | "statefulset" | "statefulsets" => Some("statefulsets"),
+        "ds" | "daemonset" | "daemonsets" => Some("daemonsets"),
         "svc" | "service" | "services" => Some("services"),
         "no" | "node" | "nodes" => Some("nodes"),
         "ev" | "event" | "events" => Some("events"),

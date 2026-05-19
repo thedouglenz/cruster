@@ -7,7 +7,7 @@
 use std::fmt::Debug;
 
 use cruster_core::ResourceKey;
-use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::Resource;
 use serde::de::DeserializeOwned;
@@ -83,6 +83,50 @@ impl ResourceKind for Deployments {
         let m = &obj.metadata;
         Some(ResourceKey::namespaced(
             "Deployment",
+            m.namespace.clone()?,
+            m.name.clone()?,
+        ))
+    }
+}
+
+pub struct StatefulSets;
+impl ResourceKind for StatefulSets {
+    type Object = StatefulSet;
+    fn name() -> &'static str {
+        "StatefulSet"
+    }
+    fn plural() -> &'static str {
+        "statefulsets"
+    }
+    fn short() -> &'static str {
+        "sts"
+    }
+    fn key(obj: &StatefulSet) -> Option<ResourceKey> {
+        let m = &obj.metadata;
+        Some(ResourceKey::namespaced(
+            "StatefulSet",
+            m.namespace.clone()?,
+            m.name.clone()?,
+        ))
+    }
+}
+
+pub struct DaemonSets;
+impl ResourceKind for DaemonSets {
+    type Object = DaemonSet;
+    fn name() -> &'static str {
+        "DaemonSet"
+    }
+    fn plural() -> &'static str {
+        "daemonsets"
+    }
+    fn short() -> &'static str {
+        "ds"
+    }
+    fn key(obj: &DaemonSet) -> Option<ResourceKey> {
+        let m = &obj.metadata;
+        Some(ResourceKey::namespaced(
+            "DaemonSet",
             m.namespace.clone()?,
             m.name.clone()?,
         ))
@@ -271,5 +315,37 @@ mod tests {
             ..Default::default()
         };
         assert!(Pods::key(&pod).is_none());
+    }
+
+    #[test]
+    fn statefulsets_key_namespaced() {
+        let sts = StatefulSet {
+            metadata: ObjectMeta {
+                name: Some("postgres".into()),
+                namespace: Some("default".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let k = StatefulSets::key(&sts).unwrap();
+        assert_eq!(k.kind, "StatefulSet");
+        assert_eq!(k.namespace.as_deref(), Some("default"));
+        assert_eq!(k.name, "postgres");
+    }
+
+    #[test]
+    fn daemonsets_key_namespaced() {
+        let ds = DaemonSet {
+            metadata: ObjectMeta {
+                name: Some("fluentd".into()),
+                namespace: Some("kube-system".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let k = DaemonSets::key(&ds).unwrap();
+        assert_eq!(k.kind, "DaemonSet");
+        assert_eq!(k.namespace.as_deref(), Some("kube-system"));
+        assert_eq!(k.name, "fluentd");
     }
 }
