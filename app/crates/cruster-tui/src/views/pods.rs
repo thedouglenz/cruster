@@ -85,13 +85,23 @@ impl ResourceView for PodsView {
                 let marker = if i == self.selected { "▎" } else { " " };
                 let ready_str = pod_ready(pod);
                 let ready_style = super::ready_cell_style(&ready_str, theme);
+                let phase = pod_phase(pod);
+                let row_tint = if pod_is_unhealthy(&phase, &ready_str) {
+                    Some(super::unhealthy_row_style(theme))
+                } else {
+                    None
+                };
+                let cell = |s: String| match row_tint {
+                    Some(t) => Cell::from(s).style(t),
+                    None => Cell::from(s),
+                };
                 let row = Row::new(vec![
                     Cell::from(marker),
-                    Cell::from(ns.to_string()),
-                    Cell::from(key.name.clone()),
-                    Cell::from(pod_phase(pod)),
-                    Cell::from(ready_str).style(ready_style),
-                    Cell::from(pod_restarts(pod).to_string()),
+                    cell(ns.to_string()),
+                    cell(key.name.clone()),
+                    cell(phase),
+                    Cell::from(ready_str).style(super::merge_styles(row_tint, ready_style)),
+                    cell(pod_restarts(pod).to_string()),
                 ]);
                 if i == self.selected {
                     row.style(
@@ -182,6 +192,17 @@ fn pod_ready(pod: &Pod) -> String {
     let total = containers.len();
     let ready = containers.iter().filter(|c| c.ready).count();
     format!("{ready}/{total}")
+}
+
+/// A pod is "unhealthy" (whole row painted with the muted red
+/// tint) when its phase signals failure or it has 0 containers
+/// ready out of N. Healthy Running pods, completed Succeeded pods,
+/// and pending pods with no containers yet stay default-styled.
+fn pod_is_unhealthy(phase: &str, ready: &str) -> bool {
+    matches!(
+        phase,
+        "Failed" | "CrashLoopBackOff" | "Error" | "ImagePullBackOff" | "ErrImagePull"
+    ) || super::ready_str_is_unhealthy(ready)
 }
 
 fn pod_restarts(pod: &Pod) -> i32 {
@@ -397,6 +418,119 @@ mod tests {
                         Some(want_fg),
                         "fully-ready cell should not carry status.failed fg"
                     );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn render_row_tinted_red_when_pod_is_zero_ready() {
+        use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, mut p) = make_pod_entry("default", "broken");
+        p.status = Some(PodStatus {
+            phase: Some("Running".into()),
+            container_statuses: Some(vec![ContainerStatus {
+                name: "a".into(),
+                ready: false,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        // The NAME cell ("broken") should carry the row tint.
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(5) {
+                let glyphs: String = (0..6).map(|i| buf[(x + i, y)].symbol()).collect();
+                if glyphs == "broken" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected 'broken' name cell in buffer");
+    }
+
+    #[test]
+    fn render_row_tinted_red_when_pod_phase_is_crashloopbackoff() {
+        use k8s_openapi::api::core::v1::PodStatus;
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, mut p) = make_pod_entry("default", "looping");
+        p.status = Some(PodStatus {
+            phase: Some("CrashLoopBackOff".into()),
+            ..Default::default()
+        });
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(6) {
+                let glyphs: String = (0..7).map(|i| buf[(x + i, y)].symbol()).collect();
+                if glyphs == "looping" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected 'looping' name cell in buffer");
+    }
+
+    #[test]
+    fn render_row_not_tinted_when_pod_is_running_and_ready() {
+        use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, mut p) = make_pod_entry("default", "healthy");
+        p.status = Some(PodStatus {
+            phase: Some("Running".into()),
+            container_statuses: Some(vec![ContainerStatus {
+                name: "a".into(),
+                ready: true,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(6) {
+                let glyphs: String = (0..7).map(|i| buf[(x + i, y)].symbol()).collect();
+                if glyphs == "healthy" {
+                    assert_ne!(buf[(x, y)].style().fg, Some(want_fg));
                 }
             }
         }

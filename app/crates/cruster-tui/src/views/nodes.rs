@@ -53,13 +53,23 @@ impl ResourceView for NodesView {
             .enumerate()
             .map(|(i, (key, node))| {
                 let marker = if i == self.selected { "▎" } else { " " };
+                let status = node_status(node);
+                let row_tint = if status != "Ready" {
+                    Some(super::unhealthy_row_style(theme))
+                } else {
+                    None
+                };
+                let cell = |s: String| match row_tint {
+                    Some(t) => Cell::from(s).style(t),
+                    None => Cell::from(s),
+                };
                 let row = Row::new(vec![
                     Cell::from(marker),
-                    Cell::from(key.name.clone()),
-                    Cell::from(node_status(node)),
-                    Cell::from(node_roles(node)),
-                    Cell::from(node_version(node)),
-                    Cell::from(node_os_image(node)),
+                    cell(key.name.clone()),
+                    cell(status),
+                    cell(node_roles(node)),
+                    cell(node_version(node)),
+                    cell(node_os_image(node)),
                 ]);
                 if i == self.selected {
                     row.style(
@@ -241,6 +251,36 @@ mod tests {
             }
         }
         assert!(found);
+    }
+
+    #[test]
+    fn render_row_tinted_red_when_node_is_notready() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = NodesView::new();
+        let n = make_node_with_condition("worker-down", "Ready", "False");
+        view.snapshot = vec![(ResourceKey::cluster_scoped("Node", "worker-down"), n)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(10) {
+                let glyphs: String = (0..11).map(|i| buf[(x + i, y)].symbol()).collect();
+                if glyphs == "worker-down" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected 'worker-down' name cell tinted red");
     }
 
     #[test]

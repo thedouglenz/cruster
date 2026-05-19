@@ -62,14 +62,23 @@ impl ResourceView for DeploymentsView {
                 let (ready, desired) = ready_desired(dep);
                 let ready_str = format!("{ready}/{desired}");
                 let ready_style = super::ready_cell_style(&ready_str, theme);
+                let row_tint = if super::ready_str_is_unhealthy(&ready_str) {
+                    Some(super::unhealthy_row_style(theme))
+                } else {
+                    None
+                };
+                let cell = |s: String| match row_tint {
+                    Some(t) => Cell::from(s).style(t),
+                    None => Cell::from(s),
+                };
                 let marker = if i == self.selected { "▎" } else { " " };
                 let row = Row::new(vec![
                     Cell::from(marker),
-                    Cell::from(ns.to_string()),
-                    Cell::from(key.name.clone()),
-                    Cell::from(ready_str).style(ready_style),
-                    Cell::from(updated_replicas(dep).to_string()),
-                    Cell::from(available_replicas(dep).to_string()),
+                    cell(ns.to_string()),
+                    cell(key.name.clone()),
+                    Cell::from(ready_str).style(super::merge_styles(row_tint, ready_style)),
+                    cell(updated_replicas(dep).to_string()),
+                    cell(available_replicas(dep).to_string()),
                 ]);
                 if i == self.selected {
                     row.style(
@@ -294,6 +303,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn render_row_tinted_red_when_deployment_zero_ready() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut view = DeploymentsView::new();
+        view.snapshot = vec![(
+            ResourceKey::namespaced("Deployment", "default", "down"),
+            make_dep("default", "down", 0, 3),
+        )];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(120, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(3) {
+                let glyphs: String = (0..4).map(|i| buf[(x + i, y)].symbol()).collect();
+                if glyphs == "down" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected 'down' name cell in buffer");
     }
 
     #[tokio::test]
