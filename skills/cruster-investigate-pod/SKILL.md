@@ -16,14 +16,40 @@ cruster doctor --json | jq '.checks[] | select(.status != "ok")'
 This validates kubeconfig, kubectl, apiserver reachability, and RBAC
 permissions. Fix any reported issues before proceeding.
 
-## Primary call
+## Targeted diagnosis — fastest when the symptom is known
+
+If you already know what's wrong with the pod, a targeted `why-`
+verb is denser than a full bundle. Each emits one structured JSON
+object with a `reason` enum and supporting `evidence`:
+
+```bash
+# Pod in CrashLoopBackOff — exit codes, log signals (auth/network/perm),
+# OOMKilled, ImagePullBackOff, CreateContainerConfigError
+cruster why-crashloop <name> -n <namespace>
+
+# Pod stuck Pending — scheduler events (taints / affinity / resources),
+# unbound PVCs, missing ServiceAccount, image pull, etc.
+cruster why-pending <name> -n <namespace>
+
+# Pod's init container failing — same signal set as why-crashloop but
+# reads status.initContainerStatuses and picks the lowest-index failing
+# init container
+cruster why-init-failure <name> -n <namespace>
+
+# Service with no live endpoints — selector/labels/readiness/port-match
+cruster why-no-endpoints <service-name> -n <namespace>
+```
+
+All `why-` verbs share the same response shape: `reason` (enum),
+`evidence` (object with applicable fields), `suggested_fix` (string).
+Schemas live in `cruster schema <verb>` and inline in `cruster help-json`.
+
+## Primary call (when the symptom is unclear)
 
 Cruster ships a single command that bundles manifest, recent events,
 and a log tail into one markdown report. Reach for this before
 running individual `kubectl describe` / `kubectl logs` calls — it's
 one round-trip instead of three.
-
-## Primary call
 
 ```bash
 cruster export pod/<name> -n <namespace>
