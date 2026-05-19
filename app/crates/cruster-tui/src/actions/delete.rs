@@ -67,18 +67,18 @@ pub fn kubectl_command(key: &ResourceKey, policy: PropagationPolicy, force: bool
 /// or an error containing the captured stderr's first line. The TUI
 /// schedules this via `tokio::task::spawn_blocking` so the event loop
 /// keeps drawing.
-pub fn run_delete(
-    key: &ResourceKey,
-    policy: PropagationPolicy,
-    force: bool,
-) -> anyhow::Result<()> {
+pub fn run_delete(key: &ResourceKey, policy: PropagationPolicy, force: bool) -> anyhow::Result<()> {
     let args = kubectl_argv(key, policy, force);
     let output = Command::new("kubectl").args(&args).output()?;
     if output.status.success() {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let first = stderr.lines().next().unwrap_or("kubectl delete failed").trim();
+    let first = stderr
+        .lines()
+        .next()
+        .unwrap_or("kubectl delete failed")
+        .trim();
     anyhow::bail!("{}", first)
 }
 
@@ -92,7 +92,14 @@ mod tests {
         let argv = kubectl_argv(&key, PropagationPolicy::Background, false);
         assert_eq!(
             argv,
-            vec!["delete", "pod", "nginx", "-n", "default", "--cascade=background"]
+            vec![
+                "delete",
+                "pod",
+                "nginx",
+                "-n",
+                "default",
+                "--cascade=background"
+            ]
         );
     }
 

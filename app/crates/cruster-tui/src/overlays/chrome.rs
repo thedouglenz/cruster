@@ -9,13 +9,7 @@ use ratatui::layout::Rect;
 /// `max_w × max_h` and never smaller than `min_w × min_h`. Returns
 /// `None` if the frame can't host even the minimum — caller renders
 /// nothing in that case rather than crashing.
-pub fn centered_rect(
-    area: Rect,
-    min_w: u16,
-    min_h: u16,
-    max_w: u16,
-    max_h: u16,
-) -> Option<Rect> {
+pub fn centered_rect(area: Rect, min_w: u16, min_h: u16, max_w: u16, max_h: u16) -> Option<Rect> {
     if area.width < min_w || area.height < min_h {
         return None;
     }

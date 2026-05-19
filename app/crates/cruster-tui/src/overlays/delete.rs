@@ -145,8 +145,7 @@ impl DeleteOverlay {
         let active = Style::default()
             .fg(theme.selection_fg.as_ratatui())
             .add_modifier(Modifier::BOLD);
-        let mut spans: Vec<Span<'static>> =
-            vec![Span::styled("  Propagation:  ", muted)];
+        let mut spans: Vec<Span<'static>> = vec![Span::styled("  Propagation:  ", muted)];
         for p in [
             PropagationPolicy::Background,
             PropagationPolicy::Foreground,

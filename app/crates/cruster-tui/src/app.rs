@@ -324,6 +324,14 @@ impl App {
                 self.pin_current_selection();
                 LoopState::Continue
             }
+            S::Delete => {
+                self.start_delete_prompt();
+                LoopState::Continue
+            }
+            S::OpenHelp => {
+                self.open_help_overlay();
+                LoopState::Continue
+            }
         }
     }
 
@@ -631,6 +639,14 @@ impl App {
                         }
                         return LoopState::Continue;
                     }
+                    if id == "delete-submit" {
+                        let payload = self.overlay.as_ref().and_then(|o| o.delete_payload());
+                        self.overlay = None;
+                        if let Some((key, policy, force)) = payload {
+                            self.submit_delete(key, policy, force);
+                        }
+                        return LoopState::Continue;
+                    }
                     self.overlay = None;
                     return self.invoke_action(&id);
                 }
@@ -730,6 +746,47 @@ impl App {
         match crate::actions::yaml_edit::edit_and_apply(&yaml) {
             Ok(_) => self.toast = Some("applied".into()),
             Err(e) => self.toast = Some(format!("edit failed: {e}")),
+        }
+    }
+
+    fn start_delete_prompt(&mut self) {
+        if self.read_only {
+            self.toast = Some("read-only mode: delete disabled (Ctrl+R to toggle)".into());
+            return;
+        }
+        let Some(key) = self.active_view().selected_key() else {
+            self.toast = Some("nothing selected".into());
+            return;
+        };
+        self.overlay = Some(Box::new(crate::overlays::delete::DeleteOverlay::new(key)));
+    }
+
+    fn open_help_overlay(&mut self) {
+        self.overlay = Some(Box::new(crate::overlays::help::HelpOverlay::new(
+            self.keymap.clone(),
+        )));
+    }
+
+    fn submit_delete(
+        &mut self,
+        key: cruster_core::ResourceKey,
+        policy: crate::actions::delete::PropagationPolicy,
+        force: bool,
+    ) {
+        // kubectl delete normally returns in well under a second.
+        // Matches the export verb's choice to await inline rather
+        // than thread the result back through a channel.
+        let label = match key.namespace.as_deref() {
+            Some(ns) => format!("{}/{} in {}", key.kind.to_lowercase(), key.name, ns),
+            None => format!("{}/{}", key.kind.to_lowercase(), key.name),
+        };
+        match crate::actions::delete::run_delete(&key, policy, force) {
+            Ok(()) => {
+                self.toast = Some(format!("deleted {label}"));
+            }
+            Err(e) => {
+                self.toast = Some(format!("delete failed: {e}"));
+            }
         }
     }
 
@@ -1664,5 +1721,39 @@ mod tests {
 
         a.switch_to_view_id("dashboard");
         assert_eq!(a.active_view().id(), "dashboard");
+    }
+
+    #[test]
+    fn capital_d_in_read_only_mode_toasts_and_does_not_open_overlay() {
+        let mut a = app();
+        a.read_only = true;
+        let _ = a.handle_key(press(KeyCode::Char('D')));
+        assert!(a.overlay.is_none(), "no overlay should open in RO mode");
+        assert!(
+            a.toast.as_deref().unwrap_or("").contains("read-only"),
+            "toast should explain RO gating: {:?}",
+            a.toast
+        );
+    }
+
+    #[test]
+    fn capital_d_with_no_selection_toasts() {
+        let mut a = app();
+        a.read_only = false;
+        // Default view is dashboard with no pins -> no selection.
+        a.switch_to_view_id("pods"); // empty store -> no selection
+        let _ = a.handle_key(press(KeyCode::Char('D')));
+        assert!(
+            a.overlay.is_none(),
+            "no overlay should open without selection"
+        );
+        assert_eq!(a.toast.as_deref(), Some("nothing selected"));
+    }
+
+    #[test]
+    fn question_mark_opens_help_overlay() {
+        let mut a = app();
+        let _ = a.handle_key(press(KeyCode::Char('?')));
+        assert!(a.overlay.is_some(), "? should open an overlay (help)");
     }
 }
