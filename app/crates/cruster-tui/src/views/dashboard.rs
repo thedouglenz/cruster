@@ -227,26 +227,27 @@ impl ResourceView for DashboardView {
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        // Summary + trends get their requested fixed lengths; pins
-        // gets the remainder (down to a 2-row floor). The pin tile
-        // grid already auto-flows and shows a "+N more" hint when
-        // some tiles get clipped, so handing it the remainder rather
-        // than `Min(pins_h)` keeps the cluster-identity numbers and
-        // trends band from being squeezed on tall pin lists.
+        // Summary + trends + events claim fixed-ish lengths; pins
+        // absorbs the remainder. Events band is the bottom ~1/4 of
+        // the dashboard (floor 4 rows so it still reads on a small
+        // terminal). Pins gets squeezed before events does.
+        let events_h = events_band_height(area.height);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 // Summary band: top border + identity line + scale
                 // line + CPU bar + MEM bar + 1 padding = 6 rows.
                 Constraint::Length(6),
-                Constraint::Length(9), // trends band: top border + title + 6 chart rows + axis
-                Constraint::Min(2),
+                Constraint::Length(9), // trends band
+                Constraint::Min(2),    // pins band — absorbs leftover
+                Constraint::Length(events_h),
             ])
             .split(area);
 
         self.render_summary(frame, chunks[0], theme);
         self.render_trends(frame, chunks[1], theme);
         self.render_pins(frame, chunks[2], theme);
+        self.render_events(frame, chunks[3], theme);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> LoopState {
@@ -457,6 +458,75 @@ impl DashboardView {
     }
 
     /// Narrow-terminal fallback: one line per pin.
+    fn render_events(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
+        if area.height < 2 || area.width < 30 {
+            return;
+        }
+        let warn_count = self
+            .events
+            .iter()
+            .filter(|(_, e)| e.type_.as_deref() == Some("Warning"))
+            .count();
+        let normal_count = self.events.len() - warn_count;
+        let title = format!(" events · {warn_count} warnings · {normal_count} normal ");
+        let block = Block::default().borders(Borders::TOP).title(title);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        if self.events.is_empty() {
+            let placeholder = Paragraph::new("  no events").style(
+                Style::default().fg(theme.muted_fg.as_ratatui()),
+            );
+            frame.render_widget(
+                placeholder,
+                Rect {
+                    x: inner.x,
+                    y: inner.y,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
+            return;
+        }
+
+        let muted_style = Style::default().fg(theme.muted_fg.as_ratatui());
+        let warning_style = super::unhealthy_row_style(theme);
+        for (i, (_, e)) in self.events.iter().enumerate() {
+            if i as u16 >= inner.height {
+                break;
+            }
+            let is_warning = e.type_.as_deref() == Some("Warning");
+            let glyph = if is_warning { "⚠" } else { "·" };
+            let age = event_age_for_band(e);
+            let reason = e.reason.clone().unwrap_or_default();
+            let object = event_object_for_band(e);
+            let message = e.message.clone().unwrap_or_default();
+            // Columns: " AGE(5) GLYPH(2) REASON(16) OBJECT(24) MESSAGE(rest)".
+            // Manually space so we can truncate the message to fit.
+            let prefix = format!(
+                " {:<5} {:<2} {:<16} {:<24} ",
+                truncate(&age, 5),
+                glyph,
+                truncate(&reason, 16),
+                truncate(&object, 24),
+            );
+            let prefix_w = prefix.chars().count() as u16;
+            let msg_w = inner.width.saturating_sub(prefix_w);
+            let msg = truncate(&message, msg_w as usize);
+            let line = format!("{prefix}{msg}");
+            let style = if is_warning { warning_style } else { muted_style };
+            frame.render_widget(
+                Paragraph::new(line).style(style),
+                Rect {
+                    x: inner.x,
+                    y: inner.y + i as u16,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
+        }
+    }
+
     fn render_pins_compact(&self, frame: &mut Frame<'_>, inner: Rect, theme: &Theme) {
         if inner.height == 0 {
             return;
@@ -1419,6 +1489,55 @@ fn node_is_ready(node: &Node) -> bool {
                 .any(|c| c.type_ == "Ready" && c.status == "True")
         })
         .unwrap_or(false)
+}
+
+/// `last_timestamp` rendered the same way the `:events` view does
+/// it. Falls back to "?" when the event has no timestamp.
+fn event_age_for_band(e: &k8s_openapi::api::core::v1::Event) -> String {
+    let ts = e
+        .last_timestamp
+        .as_ref()
+        .map(|t| t.0)
+        .or_else(|| e.event_time.as_ref().map(|t| t.0));
+    match ts {
+        Some(t) => crate::views::events::human_age(t),
+        None => "?".into(),
+    }
+}
+
+fn event_object_for_band(e: &k8s_openapi::api::core::v1::Event) -> String {
+    let kind = e.involved_object.kind.as_deref().unwrap_or("?");
+    match &e.involved_object.name {
+        Some(n) => format!("{kind}/{n}"),
+        None => "-".into(),
+    }
+}
+
+/// Truncate `s` to at most `max_chars` graphemes, suffixing `…` when
+/// the original didn't fit. `max_chars == 0` returns an empty string.
+fn truncate(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    if max_chars == 1 {
+        return "…".into();
+    }
+    let mut out: String = s.chars().take(max_chars - 1).collect();
+    out.push('…');
+    out
+}
+
+/// Vertical-row budget for the dashboard's events band. Aims at
+/// ~1/4 of total height with a 4-row floor so the band still has
+/// a header plus 2-3 rows on a tiny terminal. The other bands
+/// (summary, trends, pins) absorb the remainder; pins is the one
+/// that shrinks first because it already auto-flows.
+pub(crate) fn events_band_height(total_height: u16) -> u16 {
+    (total_height / 4).max(4)
 }
 
 /// Sort events for the dashboard events band: Warnings first, then
