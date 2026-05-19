@@ -474,9 +474,8 @@ impl DashboardView {
         frame.render_widget(block, area);
 
         if self.events.is_empty() {
-            let placeholder = Paragraph::new("  no events").style(
-                Style::default().fg(theme.muted_fg.as_ratatui()),
-            );
+            let placeholder = Paragraph::new("  no events")
+                .style(Style::default().fg(theme.muted_fg.as_ratatui()));
             frame.render_widget(
                 placeholder,
                 Rect {
@@ -514,9 +513,15 @@ impl DashboardView {
             let msg_w = inner.width.saturating_sub(prefix_w);
             let msg = truncate(&message, msg_w as usize);
             let line = format!("{prefix}{msg}");
-            let style = if is_warning { warning_style } else { muted_style };
+            let style = if is_warning {
+                warning_style
+            } else {
+                muted_style
+            };
+            // Wrap in a Span so the style sticks to every cell, not
+            // just the Paragraph background.
             frame.render_widget(
-                Paragraph::new(line).style(style),
+                Paragraph::new(Line::from(Span::styled(line, style))),
                 Rect {
                     x: inner.x,
                     y: inner.y + i as u16,
@@ -1555,12 +1560,11 @@ fn sort_events_for_band(
         let aw = is_warning(&a.1);
         let bw = is_warning(&b.1);
         // Warnings (true) before Normals (false).
-        bw.cmp(&aw)
-            .then_with(|| {
-                let at = a.1.last_timestamp.as_ref().map(|t| t.0);
-                let bt = b.1.last_timestamp.as_ref().map(|t| t.0);
-                bt.cmp(&at)
-            })
+        bw.cmp(&aw).then_with(|| {
+            let at = a.1.last_timestamp.as_ref().map(|t| t.0);
+            let bt = b.1.last_timestamp.as_ref().map(|t| t.0);
+            bt.cmp(&at)
+        })
     });
     events.truncate(cap);
     events
@@ -1676,6 +1680,126 @@ mod tests {
             .collect();
         let sorted = sort_events_for_band(events, 25);
         assert_eq!(sorted.len(), 25);
+    }
+
+    #[test]
+    fn events_band_height_is_quarter_with_floor_of_4() {
+        assert_eq!(events_band_height(40), 10); // 40 / 4 = 10
+        assert_eq!(events_band_height(20), 5); // 20 / 4 = 5
+        assert_eq!(events_band_height(12), 4); // 12 / 4 = 3 -> floor 4
+        assert_eq!(events_band_height(8), 4); // 8 / 4 = 2 -> floor 4
+        assert_eq!(events_band_height(0), 4); // 0 / 4 = 0 -> floor 4
+    }
+
+    #[test]
+    fn truncate_handles_overflow_and_empty() {
+        assert_eq!(truncate("hello world", 5), "hell…");
+        assert_eq!(truncate("hi", 5), "hi");
+        assert_eq!(truncate("hi", 1), "…");
+        assert_eq!(truncate("hi", 0), "");
+    }
+
+    fn dashboard_with_events(
+        events: Vec<(ResourceKey, k8s_openapi::api::core::v1::Event)>,
+    ) -> DashboardView {
+        let mut v = DashboardView::new();
+        v.events = sort_events_for_band(events, EVENTS_BUFFER_CAP);
+        v
+    }
+
+    #[test]
+    fn render_events_warning_row_uses_status_failed_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut e = make_event("default", "evt", "Warning", 5);
+        e.1.reason = Some("FailedScheduling".into());
+        e.1.involved_object.kind = Some("Pod".into());
+        e.1.involved_object.name = Some("api".into());
+        e.1.message = Some("0/3 nodes available".into());
+        let v = dashboard_with_events(vec![e]);
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Find the ⚠ glyph cell — that row must carry the failed fg.
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "⚠" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ⚠ glyph in rendered buffer");
+    }
+
+    #[test]
+    fn render_events_normal_row_uses_muted_fg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut e = make_event("default", "evt", "Normal", 5);
+        e.1.reason = Some("Pulled".into());
+        e.1.involved_object.kind = Some("Pod".into());
+        e.1.involved_object.name = Some("api".into());
+        e.1.message = Some("Successfully pulled".into());
+        let v = dashboard_with_events(vec![e]);
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.muted_fg.as_ratatui();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Skip row 0 — that's the Block's top border + title, which
+        // ALSO contains "·" characters (in the title chip text) and
+        // would falsely match the styled-row search.
+        let mut found = false;
+        for y in 1..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "·" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want_fg));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected · glyph on an event row");
+    }
+
+    #[test]
+    fn render_events_empty_shows_no_events_placeholder() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let v = DashboardView::new();
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(120, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| v.render_events(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+
+        let mut row_text = String::new();
+        for y in 0..buf.area().height {
+            let line: String = (0..buf.area().width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect();
+            row_text.push_str(&line);
+            row_text.push('\n');
+        }
+        assert!(row_text.contains("no events"), "buffer: {row_text}");
     }
 
     fn make_pod(ns: &str, name: &str, phase: &str) -> (ResourceKey, Pod) {
