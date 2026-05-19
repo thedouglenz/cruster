@@ -15,10 +15,10 @@ use ratatui::style::{Modifier, Style};
 use crate::theme::Theme;
 
 /// Style for a READY-column cell whose content is a "X/Y" string.
+///
 /// When X parses as 0 and Y > 0, returns a bold `status.failed`
-/// style. Otherwise returns `Style::default()`. Centralised so pods
-/// + deployments (and future workload views) paint the cue the
-/// same way.
+/// style. Otherwise returns `Style::default()`. Centralised so every
+/// workload list view paints the cue identically.
 pub(crate) fn ready_cell_style(ready: &str, theme: &Theme) -> Style {
     let (num, den) = match ready.split_once('/') {
         Some((n, d)) => (n.trim(), d.trim()),

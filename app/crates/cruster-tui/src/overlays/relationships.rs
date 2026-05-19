@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
+use crate::theme::Theme;
 
 pub struct RelationshipsOverlay {
     related: Vec<Related>,
@@ -83,6 +84,8 @@ impl Overlay for RelationshipsOverlay {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(1)])
             .split(rect);
+        let theme = Theme::terminal_default();
+        let border_style = Style::default().fg(theme.overlay_border.as_ratatui());
         let header = Paragraph::new(format!(
             "related to {} ({})",
             self.title,
@@ -91,6 +94,7 @@ impl Overlay for RelationshipsOverlay {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_style(border_style)
                 .title(" Relationships "),
         );
         frame.render_widget(header, chunks[0]);
@@ -111,12 +115,50 @@ impl Overlay for RelationshipsOverlay {
             state.select(Some(self.selected.min(items.len() - 1)));
         }
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(border_style),
+            )
             .highlight_style(
                 Style::default()
                     .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
             );
         frame.render_stateful_widget(list, chunks[1], &mut state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cruster_core::ResourceKey;
+    use cruster_kube::relationships::{Related, RelationKind};
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn render_border_uses_theme_overlay_border() {
+        let related = vec![Related {
+            kind: RelationKind::OwnerRef,
+            key: ResourceKey::namespaced("Pod", "default", "nginx"),
+        }];
+        let o = RelationshipsOverlay::new("Deployment/web", related);
+        let theme = Theme::terminal_default();
+        let want = theme.overlay_border.as_ratatui();
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| o.render(f, f.area())).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "┌" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ┌ corner glyph in rendered buffer");
     }
 }

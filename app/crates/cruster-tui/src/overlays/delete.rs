@@ -119,6 +119,7 @@ impl DeleteOverlay {
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.overlay_border.as_ratatui()))
             .title(title)
             .title_style(
                 Style::default()
@@ -288,6 +289,33 @@ mod tests {
         assert_eq!(k.name, "nginx");
         assert_eq!(p, PropagationPolicy::Foreground);
         assert!(force);
+    }
+
+    #[test]
+    fn render_border_uses_theme_overlay_border() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let o = overlay();
+        let theme = crate::theme::Theme::terminal_default();
+        let want = theme.overlay_border.as_ratatui();
+        let backend = TestBackend::new(80, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| o.render_with_theme(f, f.area(), &theme))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        // Hunt for the top-left corner glyph ┌ — its fg must match.
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "┌" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ┌ corner glyph in rendered buffer");
     }
 
     #[test]

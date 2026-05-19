@@ -9,6 +9,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use ratatui::Frame;
 
 use crate::overlay::{Overlay, OverlayResult};
+use crate::theme::Theme;
 
 #[derive(Debug, Clone)]
 pub struct PaletteEntry {
@@ -120,10 +121,13 @@ impl Overlay for Palette {
             .constraints([Constraint::Length(3), Constraint::Min(1)])
             .split(rect);
 
+        let theme = Theme::terminal_default();
+        let border_style = Style::default().fg(theme.overlay_border.as_ratatui());
         let query = Paragraph::new(format!("> {}", self.query))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
+                    .border_style(border_style)
                     .title(" Command Palette "),
             )
             .style(Style::default());
@@ -150,7 +154,11 @@ impl Overlay for Palette {
             state.select(Some(self.selected.min(items.len() - 1)));
         }
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(border_style),
+            )
             .highlight_style(
                 Style::default()
                     .bg(Color::DarkGray)
@@ -230,6 +238,30 @@ mod tests {
         let filtered = pal.filtered();
         assert!(!filtered.is_empty());
         assert_eq!(filtered[0].0.label, "Deployments");
+    }
+
+    #[test]
+    fn render_border_uses_theme_overlay_border() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let pal = p();
+        let theme = Theme::terminal_default();
+        let want = theme.overlay_border.as_ratatui();
+        let backend = TestBackend::new(80, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| pal.render(f, f.area())).unwrap();
+        let buf = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width {
+                if buf[(x, y)].symbol() == "┌" {
+                    assert_eq!(buf[(x, y)].style().fg, Some(want));
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected ┌ corner glyph in rendered buffer");
     }
 
     #[test]
