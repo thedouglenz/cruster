@@ -94,6 +94,12 @@ pub struct App {
     /// Deferred work: `E` was pressed — build a diagnostic export on
     /// the next async tick.
     pending_export: bool,
+    /// In-flight `kubectl delete`: a tokio task is awaiting kubectl
+    /// in the background; the run_loop polls this each tick and
+    /// drains it once kubectl finishes. None when no delete is
+    /// pending. The String inside the result is the human label so
+    /// the toast can name what got deleted.
+    delete_in_flight: Option<(String, tokio::sync::oneshot::Receiver<Result<(), String>>)>,
 }
 
 impl App {
@@ -134,6 +140,7 @@ impl App {
             prompt_leader_armed: false,
             pending_prompt_trigger: None,
             pending_export: false,
+            delete_in_flight: None,
         }
     }
 
@@ -776,19 +783,51 @@ impl App {
         policy: crate::actions::delete::PropagationPolicy,
         force: bool,
     ) {
-        // kubectl delete normally returns in well under a second.
-        // Matches the export verb's choice to await inline rather
-        // than thread the result back through a channel.
         let label = match key.namespace.as_deref() {
             Some(ns) => format!("{}/{} in {}", key.kind.to_lowercase(), key.name, ns),
             None => format!("{}/{}", key.kind.to_lowercase(), key.name),
         };
-        match crate::actions::delete::run_delete(&key, policy, force) {
-            Ok(()) => {
+        if self.delete_in_flight.is_some() {
+            self.toast =
+                Some("another delete is still in flight — try again when it finishes".into());
+            return;
+        }
+        // Spawn kubectl in the background. The run_loop polls the
+        // receiver each tick and toasts when the result lands. The
+        // event loop keeps drawing while kubectl runs, so a slow
+        // delete (Foreground propagation, unreachable apiserver)
+        // can never freeze the UI.
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let result = crate::actions::delete::run_delete(key, policy, force)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+        self.toast = Some(format!("deleting {label}…"));
+        self.delete_in_flight = Some((label, rx));
+    }
+
+    /// Drained once per run_loop tick. If the in-flight kubectl
+    /// finished, set a result toast and clear the slot.
+    fn poll_delete_in_flight(&mut self) {
+        let Some((label, mut rx)) = self.delete_in_flight.take() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(())) => {
                 self.toast = Some(format!("deleted {label}"));
             }
-            Err(e) => {
-                self.toast = Some(format!("delete failed: {e}"));
+            Ok(Err(msg)) => {
+                self.toast = Some(format!("delete {label} failed: {msg}"));
+            }
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                // Still running — put it back so the next tick polls
+                // it again.
+                self.delete_in_flight = Some((label, rx));
+            }
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                self.toast = Some(format!("delete {label} failed: worker dropped"));
             }
         }
     }
@@ -889,6 +928,7 @@ impl App {
                 self.pending_export = false;
                 self.run_export().await;
             }
+            self.poll_delete_in_flight();
             terminal.draw(|f| self.render_full(f))?;
 
             if event::poll(Duration::from_millis(100))? {

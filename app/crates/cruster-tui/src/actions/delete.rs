@@ -1,10 +1,11 @@
 //! Delete action: shells out to `kubectl delete` for the selected
 //! resource with the user's chosen propagation policy + optional
-//! force/grace-period override.
-
-use std::process::Command;
+//! force/grace-period override. The actual `kubectl` invocation is
+//! async (tokio::process) so a slow delete (Foreground propagation,
+//! unreachable apiserver) can never block the TUI event loop.
 
 use cruster_core::ResourceKey;
+use tokio::process::Command;
 
 /// Cascade strategy for the apiserver's garbage collector.
 /// Maps to `kubectl delete --cascade=<value>`.
@@ -63,13 +64,16 @@ pub fn kubectl_command(key: &ResourceKey, policy: PropagationPolicy, force: bool
     s
 }
 
-/// Run `kubectl delete ...` synchronously and return Ok(()) on success
-/// or an error containing the captured stderr's first line. The TUI
-/// schedules this via `tokio::task::spawn_blocking` so the event loop
-/// keeps drawing.
-pub fn run_delete(key: &ResourceKey, policy: PropagationPolicy, force: bool) -> anyhow::Result<()> {
-    let args = kubectl_argv(key, policy, force);
-    let output = Command::new("kubectl").args(&args).output()?;
+/// Run `kubectl delete ...` to completion. Async — caller should
+/// `tokio::spawn` this so the TUI event loop keeps drawing while a
+/// slow delete (Foreground propagation, unreachable apiserver) runs.
+pub async fn run_delete(
+    key: ResourceKey,
+    policy: PropagationPolicy,
+    force: bool,
+) -> anyhow::Result<()> {
+    let args = kubectl_argv(&key, policy, force);
+    let output = Command::new("kubectl").args(&args).output().await?;
     if output.status.success() {
         return Ok(());
     }
@@ -78,7 +82,8 @@ pub fn run_delete(key: &ResourceKey, policy: PropagationPolicy, force: bool) -> 
         .lines()
         .next()
         .unwrap_or("kubectl delete failed")
-        .trim();
+        .trim()
+        .to_string();
     anyhow::bail!("{}", first)
 }
 
