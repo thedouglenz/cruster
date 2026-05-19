@@ -43,15 +43,8 @@ impl ResourceView for StatefulSetsView {
     }
 
     fn render(&self, frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-        let header = Row::new(vec![
-            "",
-            "NAMESPACE",
-            "NAME",
-            "READY",
-            "AGE",
-            "IMAGE",
-        ])
-        .style(Style::default().fg(theme.header_fg.as_ratatui()));
+        let header = Row::new(vec!["", "NAMESPACE", "NAME", "READY", "AGE", "IMAGE"])
+            .style(Style::default().fg(theme.header_fg.as_ratatui()));
 
         let table_rows: Vec<Row> = self
             .snapshot

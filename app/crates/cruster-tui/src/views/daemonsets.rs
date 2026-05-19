@@ -158,10 +158,7 @@ fn current_pods(ds: &DaemonSet) -> i32 {
 }
 
 fn ready_pods(ds: &DaemonSet) -> i32 {
-    ds.status
-        .as_ref()
-        .map(|s| s.number_ready)
-        .unwrap_or(0)
+    ds.status.as_ref().map(|s| s.number_ready).unwrap_or(0)
 }
 
 fn updated_pods(ds: &DaemonSet) -> i32 {
