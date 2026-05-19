@@ -152,7 +152,7 @@ impl LogsPane {
             }
         } else {
             match key.code {
-                KeyCode::Esc => {
+                KeyCode::Esc | KeyCode::Char('q') => {
                     self.close();
                     true
                 }
@@ -177,7 +177,11 @@ impl LogsPane {
                     self.scroll = self.scroll.saturating_sub(20);
                     true
                 }
-                _ => true,
+                // Unknown keys fall through to the keymap so global
+                // commands (D, ?, palette, …) keep working when the
+                // logs pane has focus. Grep mode (above) still
+                // swallows everything because the user is typing.
+                _ => false,
             }
         }
     }
