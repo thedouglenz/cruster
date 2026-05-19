@@ -83,12 +83,14 @@ impl ResourceView for PodsView {
             .map(|(i, (key, pod))| {
                 let ns = key.namespace.as_deref().unwrap_or("-");
                 let marker = if i == self.selected { "▎" } else { " " };
+                let ready_str = pod_ready(pod);
+                let ready_style = super::ready_cell_style(&ready_str, theme);
                 let row = Row::new(vec![
                     Cell::from(marker),
                     Cell::from(ns.to_string()),
                     Cell::from(key.name.clone()),
                     Cell::from(pod_phase(pod)),
-                    Cell::from(pod_ready(pod)),
+                    Cell::from(ready_str).style(ready_style),
                     Cell::from(pod_restarts(pod).to_string()),
                 ]);
                 if i == self.selected {
@@ -290,6 +292,114 @@ mod tests {
             saw_marker_cell,
             "expected to find ▎ selection marker in rendered buffer"
         );
+    }
+
+    #[test]
+    fn render_ready_cell_is_failed_red_when_zero_containers_ready() {
+        use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        // Pod with 3 containers, none ready -> READY column shows "0/3".
+        let (k, mut p) = make_pod_entry("default", "broken");
+        p.status = Some(PodStatus {
+            container_statuses: Some(vec![
+                ContainerStatus {
+                    name: "a".into(),
+                    ready: false,
+                    ..Default::default()
+                },
+                ContainerStatus {
+                    name: "b".into(),
+                    ready: false,
+                    ..Default::default()
+                },
+                ContainerStatus {
+                    name: "c".into(),
+                    ready: false,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        });
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let want_fg = theme.status.failed.as_ratatui();
+
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Find the leading '0' of "0/3" anywhere on the rendered grid.
+        let mut found = false;
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(2) {
+                if buf[(x, y)].symbol() == "0"
+                    && buf[(x + 1, y)].symbol() == "/"
+                    && buf[(x + 2, y)].symbol() == "3"
+                {
+                    let style = buf[(x, y)].style();
+                    assert_eq!(
+                        style.fg,
+                        Some(want_fg),
+                        "zero-ready READY cell should use status.failed fg"
+                    );
+                    assert!(
+                        style.add_modifier.contains(ratatui::style::Modifier::BOLD),
+                        "zero-ready READY cell should be bold"
+                    );
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "expected '0/3' in rendered buffer");
+    }
+
+    #[test]
+    fn render_ready_cell_is_unstyled_when_fully_ready() {
+        use k8s_openapi::api::core::v1::{ContainerStatus, PodStatus};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let (k, mut p) = make_pod_entry("default", "ok");
+        p.status = Some(PodStatus {
+            container_statuses: Some(vec![ContainerStatus {
+                name: "a".into(),
+                ready: true,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+        let mut view = PodsView::new();
+        view.snapshot = vec![(k, p)];
+
+        let theme = crate::theme::Theme::terminal_default();
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| view.render(f, f.area(), &theme)).unwrap();
+        let buf = terminal.backend().buffer();
+
+        // Find "1/1" — its leading '1' cell should NOT carry the
+        // failed fg.
+        let want_fg = theme.status.failed.as_ratatui();
+        for y in 0..buf.area().height {
+            for x in 0..buf.area().width.saturating_sub(2) {
+                if buf[(x, y)].symbol() == "1"
+                    && buf[(x + 1, y)].symbol() == "/"
+                    && buf[(x + 2, y)].symbol() == "1"
+                {
+                    let style = buf[(x, y)].style();
+                    assert_ne!(
+                        style.fg,
+                        Some(want_fg),
+                        "fully-ready cell should not carry status.failed fg"
+                    );
+                }
+            }
+        }
     }
 
     #[tokio::test]
