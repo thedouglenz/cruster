@@ -7,6 +7,7 @@
 use std::io::Write;
 
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::{Api, Client};
 use serde::Serialize;
@@ -25,6 +26,8 @@ pub fn canonicalise_kind(raw: &str) -> Option<&'static str> {
         "deploy" | "deployment" | "deployments" => Some("deployments"),
         "sts" | "statefulset" | "statefulsets" => Some("statefulsets"),
         "ds" | "daemonset" | "daemonsets" => Some("daemonsets"),
+        "job" | "jobs" => Some("jobs"),
+        "cj" | "cronjob" | "cronjobs" => Some("cronjobs"),
         "svc" | "service" | "services" => Some("services"),
         "no" | "node" | "nodes" => Some("nodes"),
         "ev" | "event" | "events" => Some("events"),
@@ -45,6 +48,8 @@ pub async fn run(cli: &Cli, args: &GetArgs) -> anyhow::Result<()> {
             run_namespaced::<StatefulSet, _>(cli, args, write_statefulsets_text).await
         }
         "daemonsets" => run_namespaced::<DaemonSet, _>(cli, args, write_daemonsets_text).await,
+        "jobs" => run_namespaced::<Job, _>(cli, args, write_jobs_text).await,
+        "cronjobs" => run_namespaced::<CronJob, _>(cli, args, write_cronjobs_text).await,
         "services" => run_namespaced::<Service, _>(cli, args, write_services_text).await,
         "nodes" => run_cluster::<Node, _>(cli, args, write_nodes_text).await,
         "events" => run_namespaced::<Event, _>(cli, args, write_events_text).await,
@@ -279,6 +284,110 @@ fn write_daemonsets_text(out: &mut dyn Write, dss: &[DaemonSet]) -> std::io::Res
         )?;
     }
     Ok(())
+}
+
+fn write_jobs_text(out: &mut dyn Write, jobs: &[Job]) -> std::io::Result<()> {
+    writeln!(out, "NAMESPACE\tNAME\tCOMPLETIONS\tDURATION\tAGE")?;
+    for j in jobs {
+        let ns = j.metadata.namespace.as_deref().unwrap_or("-");
+        let name = j.metadata.name.as_deref().unwrap_or("?");
+        let completions = j.spec.as_ref().and_then(|s| s.completions).unwrap_or(1);
+        let succeeded = j.status.as_ref().and_then(|s| s.succeeded).unwrap_or(0);
+        let duration = job_duration(j);
+        writeln!(
+            out,
+            "{ns}\t{name}\t{succeeded}/{completions}\t{duration}\t{}",
+            metadata_age(&j.metadata)
+        )?;
+    }
+    Ok(())
+}
+
+fn write_cronjobs_text(out: &mut dyn Write, cjs: &[CronJob]) -> std::io::Result<()> {
+    writeln!(
+        out,
+        "NAMESPACE\tNAME\tSCHEDULE\tSUSPEND\tACTIVE\tLAST SCHEDULE\tAGE"
+    )?;
+    for c in cjs {
+        let ns = c.metadata.namespace.as_deref().unwrap_or("-");
+        let name = c.metadata.name.as_deref().unwrap_or("?");
+        let schedule = c
+            .spec
+            .as_ref()
+            .map(|s| s.schedule.clone())
+            .unwrap_or_else(|| "-".into());
+        let suspend = c
+            .spec
+            .as_ref()
+            .and_then(|s| s.suspend)
+            .map(|s| if s { "True" } else { "False" })
+            .unwrap_or("False");
+        let active = c
+            .status
+            .as_ref()
+            .and_then(|s| s.active.as_ref())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let last_schedule = c
+            .status
+            .as_ref()
+            .and_then(|s| s.last_schedule_time.as_ref())
+            .map(|t| {
+                let delta = chrono::Utc::now().signed_duration_since(t.0);
+                let secs = delta.num_seconds().max(0);
+                if secs < 60 {
+                    format!("{secs}s")
+                } else if secs < 3600 {
+                    format!("{}m", secs / 60)
+                } else if secs < 86400 {
+                    format!("{}h", secs / 3600)
+                } else {
+                    format!("{}d", secs / 86400)
+                }
+            })
+            .unwrap_or_else(|| "-".into());
+        writeln!(
+            out,
+            "{ns}\t{name}\t{schedule}\t{suspend}\t{active}\t{last_schedule}\t{}",
+            metadata_age(&c.metadata)
+        )?;
+    }
+    Ok(())
+}
+
+fn job_duration(j: &Job) -> String {
+    let Some(status) = &j.status else {
+        return "-".into();
+    };
+    let start = status.start_time.as_ref().map(|t| t.0);
+    let end = status.completion_time.as_ref().map(|t| t.0);
+    match (start, end) {
+        (Some(s), Some(e)) => {
+            let secs = (e - s).num_seconds().max(0);
+            if secs < 60 {
+                format!("{secs}s")
+            } else if secs < 3600 {
+                format!("{}m", secs / 60)
+            } else if secs < 86400 {
+                format!("{}h", secs / 3600)
+            } else {
+                format!("{}d", secs / 86400)
+            }
+        }
+        (Some(s), None) => {
+            let secs = (chrono::Utc::now() - s).num_seconds().max(0);
+            if secs < 60 {
+                format!("{secs}s")
+            } else if secs < 3600 {
+                format!("{}m", secs / 60)
+            } else if secs < 86400 {
+                format!("{}h", secs / 3600)
+            } else {
+                format!("{}d", secs / 86400)
+            }
+        }
+        _ => "-".into(),
+    }
 }
 
 fn write_services_text(out: &mut dyn Write, svcs: &[Service]) -> std::io::Result<()> {
@@ -517,6 +626,8 @@ mod tests {
         assert_eq!(canonicalise_kind("deployments"), Some("deployments"));
         assert_eq!(canonicalise_kind("statefulsets"), Some("statefulsets"));
         assert_eq!(canonicalise_kind("daemonsets"), Some("daemonsets"));
+        assert_eq!(canonicalise_kind("jobs"), Some("jobs"));
+        assert_eq!(canonicalise_kind("cronjobs"), Some("cronjobs"));
         assert_eq!(canonicalise_kind("services"), Some("services"));
         assert_eq!(canonicalise_kind("nodes"), Some("nodes"));
         assert_eq!(canonicalise_kind("events"), Some("events"));
@@ -537,5 +648,18 @@ mod tests {
         assert_eq!(canonicalise_kind("ds"), Some("daemonsets"));
         assert_eq!(canonicalise_kind("daemonset"), Some("daemonsets"));
         assert_eq!(canonicalise_kind("daemonsets"), Some("daemonsets"));
+    }
+
+    #[test]
+    fn get_job_alias_resolves_to_jobs() {
+        assert_eq!(canonicalise_kind("job"), Some("jobs"));
+        assert_eq!(canonicalise_kind("jobs"), Some("jobs"));
+    }
+
+    #[test]
+    fn get_cj_alias_resolves_to_cronjobs() {
+        assert_eq!(canonicalise_kind("cj"), Some("cronjobs"));
+        assert_eq!(canonicalise_kind("cronjob"), Some("cronjobs"));
+        assert_eq!(canonicalise_kind("cronjobs"), Some("cronjobs"));
     }
 }

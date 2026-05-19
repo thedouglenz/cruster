@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use tokio::sync::RwLock;
 
@@ -19,6 +20,8 @@ pub struct StoreRegistry {
     pub deployments: ResourceStore<Deployment>,
     pub statefulsets: ResourceStore<StatefulSet>,
     pub daemonsets: ResourceStore<DaemonSet>,
+    pub jobs: ResourceStore<Job>,
+    pub cronjobs: ResourceStore<CronJob>,
     pub services: ResourceStore<Service>,
     pub nodes: ResourceStore<Node>,
     pub events: ResourceStore<Event>,
@@ -49,6 +52,8 @@ mod tests {
         assert!(r.deployments.is_empty().await);
         assert!(r.statefulsets.is_empty().await);
         assert!(r.daemonsets.is_empty().await);
+        assert!(r.jobs.is_empty().await);
+        assert!(r.cronjobs.is_empty().await);
         assert!(r.services.is_empty().await);
         assert!(r.nodes.is_empty().await);
         assert!(r.events.is_empty().await);

@@ -92,6 +92,8 @@ pub fn resolve_alias(alias: &str) -> Option<&'static str> {
         "deploy" | "deployment" | "deployments" => Some("deployments"),
         "sts" | "statefulset" | "statefulsets" => Some("statefulsets"),
         "ds" | "daemonset" | "daemonsets" => Some("daemonsets"),
+        "job" | "jobs" => Some("jobs"),
+        "cj" | "cronjob" | "cronjobs" => Some("cronjobs"),
         "svc" | "service" | "services" => Some("services"),
         "no" | "node" | "nodes" => Some("nodes"),
         "ev" | "event" | "events" => Some("events"),

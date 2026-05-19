@@ -8,6 +8,7 @@ use std::fmt::Debug;
 
 use cruster_core::ResourceKey;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use kube::Resource;
 use serde::de::DeserializeOwned;
@@ -127,6 +128,50 @@ impl ResourceKind for DaemonSets {
         let m = &obj.metadata;
         Some(ResourceKey::namespaced(
             "DaemonSet",
+            m.namespace.clone()?,
+            m.name.clone()?,
+        ))
+    }
+}
+
+pub struct Jobs;
+impl ResourceKind for Jobs {
+    type Object = Job;
+    fn name() -> &'static str {
+        "Job"
+    }
+    fn plural() -> &'static str {
+        "jobs"
+    }
+    fn short() -> &'static str {
+        "job"
+    }
+    fn key(obj: &Job) -> Option<ResourceKey> {
+        let m = &obj.metadata;
+        Some(ResourceKey::namespaced(
+            "Job",
+            m.namespace.clone()?,
+            m.name.clone()?,
+        ))
+    }
+}
+
+pub struct CronJobs;
+impl ResourceKind for CronJobs {
+    type Object = CronJob;
+    fn name() -> &'static str {
+        "CronJob"
+    }
+    fn plural() -> &'static str {
+        "cronjobs"
+    }
+    fn short() -> &'static str {
+        "cj"
+    }
+    fn key(obj: &CronJob) -> Option<ResourceKey> {
+        let m = &obj.metadata;
+        Some(ResourceKey::namespaced(
+            "CronJob",
             m.namespace.clone()?,
             m.name.clone()?,
         ))
@@ -347,5 +392,37 @@ mod tests {
         assert_eq!(k.kind, "DaemonSet");
         assert_eq!(k.namespace.as_deref(), Some("kube-system"));
         assert_eq!(k.name, "fluentd");
+    }
+
+    #[test]
+    fn jobs_key_namespaced() {
+        let job = Job {
+            metadata: ObjectMeta {
+                name: Some("my-job".into()),
+                namespace: Some("default".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let k = Jobs::key(&job).unwrap();
+        assert_eq!(k.kind, "Job");
+        assert_eq!(k.namespace.as_deref(), Some("default"));
+        assert_eq!(k.name, "my-job");
+    }
+
+    #[test]
+    fn cronjobs_key_namespaced() {
+        let cj = CronJob {
+            metadata: ObjectMeta {
+                name: Some("backup".into()),
+                namespace: Some("prod".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let k = CronJobs::key(&cj).unwrap();
+        assert_eq!(k.kind, "CronJob");
+        assert_eq!(k.namespace.as_deref(), Some("prod"));
+        assert_eq!(k.name, "backup");
     }
 }
