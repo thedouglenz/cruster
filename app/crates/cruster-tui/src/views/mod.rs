@@ -1,10 +1,12 @@
 //! Resource views.
 
 pub mod configmaps;
+pub mod cronjobs;
 pub mod daemonsets;
 pub mod dashboard;
 pub mod deployments;
 pub mod events;
+pub mod jobs;
 pub mod namespaces;
 pub mod nodes;
 pub mod pods;

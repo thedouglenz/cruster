@@ -16,6 +16,7 @@ pub struct Related {
 pub enum RelationKind {
     OwnerRef,
     OwnedBy,
+    OwnedJobs,
     MountsConfigMap,
     MountsSecret,
     Selects,
@@ -28,6 +29,7 @@ impl RelationKind {
         match self {
             Self::OwnerRef => "owner",
             Self::OwnedBy => "owned-by",
+            Self::OwnedJobs => "owned jobs",
             Self::MountsConfigMap => "mounts cm",
             Self::MountsSecret => "mounts secret",
             Self::Selects => "selects",
@@ -44,6 +46,8 @@ pub async fn related(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related
         "Deployment" => related_for_deployment(key, registry).await,
         "StatefulSet" => related_for_statefulset(key, registry).await,
         "DaemonSet" => related_for_daemonset(key, registry).await,
+        "Job" => related_for_job(key, registry).await,
+        "CronJob" => related_for_cronjob(key, registry).await,
         "Service" => related_for_service(key, registry).await,
         "Node" => related_for_node(key, registry).await,
         _ => Vec::new(),
@@ -180,6 +184,48 @@ async fn related_for_daemonset(key: &ResourceKey, registry: &StoreRegistry) -> V
                 out.push(Related {
                     kind: RelationKind::OwnedBy,
                     key: pkey.clone(),
+                });
+                break;
+            }
+        }
+    }
+    out
+}
+
+async fn related_for_job(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related> {
+    let mut out = Vec::new();
+    let pods = registry.pods.snapshot().await;
+    let ns = key.namespace.as_deref().unwrap_or("default");
+    for (pkey, pod) in pods.iter() {
+        if pkey.namespace.as_deref() != Some(ns) {
+            continue;
+        }
+        for o in pod.metadata.owner_references.iter().flatten() {
+            if o.kind == "Job" && o.name == key.name {
+                out.push(Related {
+                    kind: RelationKind::OwnedBy,
+                    key: pkey.clone(),
+                });
+                break;
+            }
+        }
+    }
+    out
+}
+
+async fn related_for_cronjob(key: &ResourceKey, registry: &StoreRegistry) -> Vec<Related> {
+    let mut out = Vec::new();
+    let jobs = registry.jobs.snapshot().await;
+    let ns = key.namespace.as_deref().unwrap_or("default");
+    for (jkey, job) in jobs.iter() {
+        if jkey.namespace.as_deref() != Some(ns) {
+            continue;
+        }
+        for o in job.metadata.owner_references.iter().flatten() {
+            if o.kind == "CronJob" && o.name == key.name {
+                out.push(Related {
+                    kind: RelationKind::OwnedJobs,
+                    key: jkey.clone(),
                 });
                 break;
             }
@@ -374,5 +420,57 @@ mod tests {
         assert_eq!(rels.len(), 1);
         assert_eq!(rels[0].kind, RelationKind::OwnedBy);
         assert_eq!(rels[0].key.name, "fluentd-abc");
+    }
+
+    #[tokio::test]
+    async fn job_owned_pods_returned_for_matching_owner_ref() {
+        let r = StoreRegistry::new();
+        let mut pod = pod_with_labels("my-job-abc", "default", &[]);
+        pod.metadata.owner_references = Some(vec![OwnerReference {
+            kind: "Job".into(),
+            name: "my-job".into(),
+            api_version: "batch/v1".into(),
+            uid: "job-xxx".into(),
+            ..Default::default()
+        }]);
+        r.pods
+            .upsert(ResourceKey::namespaced("Pod", "default", "my-job-abc"), pod)
+            .await;
+        let rels = related(&ResourceKey::namespaced("Job", "default", "my-job"), &r).await;
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].kind, RelationKind::OwnedBy);
+        assert_eq!(rels[0].key.name, "my-job-abc");
+    }
+
+    #[tokio::test]
+    async fn cronjob_owned_jobs_returned_for_matching_owner_ref() {
+        use k8s_openapi::api::batch::v1::Job;
+
+        let r = StoreRegistry::new();
+        let job = Job {
+            metadata: ObjectMeta {
+                name: Some("backup-12345".into()),
+                namespace: Some("default".into()),
+                owner_references: Some(vec![OwnerReference {
+                    kind: "CronJob".into(),
+                    name: "backup".into(),
+                    api_version: "batch/v1".into(),
+                    uid: "cj-xxx".into(),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        r.jobs
+            .upsert(
+                ResourceKey::namespaced("Job", "default", "backup-12345"),
+                job,
+            )
+            .await;
+        let rels = related(&ResourceKey::namespaced("CronJob", "default", "backup"), &r).await;
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].kind, RelationKind::OwnedJobs);
+        assert_eq!(rels[0].key.name, "backup-12345");
     }
 }

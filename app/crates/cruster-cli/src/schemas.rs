@@ -22,6 +22,11 @@ pub const SCHEMAS: &[(&str, &str)] = &[
         "get-daemonset",
         include_str!("../schemas/get-daemonset.schema.json"),
     ),
+    pair("get-job", include_str!("../schemas/get-job.schema.json")),
+    pair(
+        "get-cronjob",
+        include_str!("../schemas/get-cronjob.schema.json"),
+    ),
     pair(
         "get-service",
         include_str!("../schemas/get-service.schema.json"),
@@ -103,6 +108,6 @@ mod tests {
 
     #[test]
     fn all_registered_verbs_present() {
-        assert_eq!(SCHEMAS.len(), 21);
+        assert_eq!(SCHEMAS.len(), 23);
     }
 }

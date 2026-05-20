@@ -31,10 +31,12 @@ use crate::overlays::search::{Filter, SearchPrompt};
 use crate::prompts::PromptDef;
 use crate::view::ResourceView;
 use crate::views::configmaps::ConfigMapsView;
+use crate::views::cronjobs::CronJobsView;
 use crate::views::daemonsets::DaemonSetsView;
 use crate::views::dashboard::DashboardView;
 use crate::views::deployments::DeploymentsView;
 use crate::views::events::EventsView;
+use crate::views::jobs::JobsView;
 use crate::views::namespaces::NamespacesView;
 use crate::views::nodes::NodesView;
 use crate::views::pods::PodsView;
@@ -473,6 +475,8 @@ impl App {
             "deployments",
             "statefulsets",
             "daemonsets",
+            "jobs",
+            "cronjobs",
             "services",
             "nodes",
             "events",
@@ -590,6 +594,8 @@ impl App {
             "deployments" => Box::new(DeploymentsView::new()),
             "statefulsets" => Box::new(StatefulSetsView::new()),
             "daemonsets" => Box::new(DaemonSetsView::new()),
+            "jobs" => Box::new(JobsView::new()),
+            "cronjobs" => Box::new(CronJobsView::new()),
             "services" => Box::new(ServicesView::new()),
             "nodes" => Box::new(NodesView::new()),
             "events" => Box::new(EventsView::new()),
